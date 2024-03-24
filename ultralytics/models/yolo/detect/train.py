@@ -5,6 +5,7 @@ import random
 from copy import copy
 
 import numpy as np
+import torch
 import torch.nn as nn
 
 from ultralytics.data import build_dataloader, build_yolo_dataset
@@ -56,7 +57,10 @@ class DetectionTrainer(BaseTrainer):
 
     def preprocess_batch(self, batch):
         """Preprocesses a batch of images by scaling and converting to float."""
-        batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
+        if batch['img'].dtype == torch.float32 or batch['img'].dtype == torch.float64 or batch['img'].dtype == torch.float16: # already a float
+            batch["img"] = batch["img"].to(self.device, non_blocking=True)
+        else:
+            batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
         if self.args.multi_scale:
             imgs = batch["img"]
             sz = (
