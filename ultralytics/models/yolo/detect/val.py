@@ -43,7 +43,13 @@ class DetectionValidator(BaseValidator):
     def preprocess(self, batch):
         """Preprocesses batch of images for YOLO training."""
         batch["img"] = batch["img"].to(self.device, non_blocking=True)
-        batch["img"] = (batch["img"].half() if self.args.half else batch["img"].float()) / 255
+        if self.args.half:
+            batch["img"] = batch["img"].half()
+        elif batch['img'].dtype == torch.float32 or batch['img'].dtype == torch.float64 or batch['img'].dtype == torch.float16: # already a float
+            pass
+        else:
+            batch["img"] = batch["img"].float() / 255.0
+            
         for k in ["batch_idx", "cls", "bboxes"]:
             batch[k] = batch[k].to(self.device)
 
