@@ -36,6 +36,7 @@ from .block import (
     Proto,
     RepC3,
     ResNetLayer,
+    ValueSplitConv
 )
 from .conv import (
     CBAM,

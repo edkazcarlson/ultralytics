@@ -40,7 +40,9 @@ from ultralytics.nn.modules import (
     ResNetLayer,
     RTDETRDecoder,
     Segment,
+    ValueSplitConv,
 )
+
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
 from ultralytics.utils.loss import v8ClassificationLoss, v8DetectionLoss, v8OBBLoss, v8PoseLoss, v8SegmentationLoss
@@ -843,6 +845,9 @@ def parse_model(d, ch, verbose=True, colorConvOutputSize=0):  # model_dict, inpu
                 args[2] = make_divisible(min(args[2], max_channels) * width, 8)
         elif m is RTDETRDecoder:  # special case, channels arg must be passed in index 1
             args.insert(1, [ch[x] for x in f])
+        elif m is ValueSplitConv:
+            args = [None, None, None, max_channels]
+            c2 = 8 * (2 ** 5)  ## TODO: subject to change
         else:
             c2 = ch[f]
 

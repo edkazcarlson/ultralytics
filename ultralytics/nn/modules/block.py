@@ -226,7 +226,92 @@ class C2f(nn.Module):
         y = list(self.cv1(x).split((self.c, self.c), 1))
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
+    
 
+# def ParseRatioLine(ratioLine):
+#     widthRatio = ratioLine.split(',')
+#     assert len(widthRatio) == 2
+#     firstNum = float(widthRatio[0])
+#     secondNum = float(widthRatio[1])
+#     tot = firstNum + secondNum
+#     firstNum = firstNum / tot
+#     secondNum = secondNum / tot 
+#     return firstNum, secondNum
+
+# def ParseConvType(convName):
+#     return getattr(torch.nn, convName[3:]) if "nn." in convName else globals()[convName]  # get module
+
+# def BuildSplitModule(depth, width, maxChannels, startingWidth, depthRatio, widthRatio, minStartingWidth = 16):
+#     if startingWidth < minStartingWidth:
+#         startingWidth = minStartingWidth
+#     if startingWidth > maxChannels:
+#         startingWidth = maxChannels
+    
+
+# def ParseValueSplitConv(config:str):
+#     config = config.split('-')
+#     # first line is the ratio of light module width to hue width. Value first, hue second.
+#     widthRatio = config[0]
+#     valueWidthRatio, hueWidthRatio = ParseRatioLine(widthRatio)
+#     # second line is the ratio of light module width to hue width
+#     depthRatio = config[1]
+#     ValueDepthRatio, hueDepthRatio = ParseRatioLine(depthRatio)
+#     # third line is the Conv Type
+#     convType = ParseConvType(config[2])
+#     # fourth line is the depth
+#     depth = int(config[3])
+#     # fifth line is starting width 
+#     width = int(config[4])
+
+#     #6th line is the fusion module
+#     valueWidth, hueWidth = int(valueWidthRatio * width), int(hueWidthRatio * width)
+#     valueDepth, hueDepth = int(ValueDepthRatio * depth), int(hueDepthRatio * depth)
+
+#     return fusionModule, lightModules, hueModules
+
+def BuildBackbone(startingChannels, depth, maxChannels):
+    moduleList = []
+    moduleList.append(Conv(startingChannels, 8))
+    prevChannels = 8
+    for i in range(1, depth):
+        newChannels = prevChannels * 2
+        if newChannels > maxChannels:
+            newChannels = maxChannels
+        moduleList.append(Conv(prevChannels, newChannels))
+        prevChannels = newChannels
+    moduleList = nn.Sequential(*moduleList)
+    print(f'making a backbone with {startingChannels} startingChannels, {newChannels}output channels')
+    return moduleList, newChannels
+    
+class FuseModule(nn.Module):
+    def __init__(self, valueChannelFinish, hueChannelFinish, kernel = 1):
+        super().__init__()
+        self.valueChannelFinish = valueChannelFinish
+        self.huChannelFinish = hueChannelFinish
+        self.fuseConv = Conv(valueChannelFinish + hueChannelFinish, valueChannelFinish + hueChannelFinish, kernel)
+
+    def forward(self, v, h):
+        x = torch.cat((v, h), 1)
+        return self.fuseConv(x)
+
+class ValueSplitConv(nn.Module):
+    def __init__(self, config:str, depth, width, maxChannels):
+        super().__init__()
+        self.config = config
+        self.depth = depth
+        self.width = width
+        self.maxChannels = maxChannels
+        self.valueMoudles, valueFinalChannel = BuildBackbone(1, 5, maxChannels)
+        self.hueModules, hueFinalChannel = BuildBackbone(2, 5, maxChannels)
+        self.fuseModule = FuseModule(valueFinalChannel, hueFinalChannel)
+
+    def forward(self, x):
+        lightChannel = x[:,0:1]
+        hueChannel = x[:,1:]
+        lightX = self.valueMoudles(lightChannel)
+        hueX = self.hueModules(hueChannel)
+        fusion = self.fuseModule(lightX, hueX)
+        return fusion
 
 class C3(nn.Module):
     """CSP Bottleneck with 3 convolutions."""
