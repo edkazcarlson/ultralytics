@@ -21,6 +21,8 @@ __all__ = (
     "CBAM",
     "Concat",
     "RepConv",
+    "FirstSplitConv",
+    "SplitConv"
 )
 
 
@@ -68,9 +70,10 @@ class FirstSplitConv(nn.Module):
 
     def forward(self, x):
         """Apply convolution, batch normalization and activation to input tensor."""
-        lightComponent = x[:,0]
+        lightComponent = x[:,0:1]
         hueComponent = x[:,1:]
-        return (self.act(self.bn(self.convL(lightComponent))), self.act(self.bn(self.convH(hueComponent))))
+        output =  (self.act(self.bn(self.convL(lightComponent))), self.act(self.bn(self.convH(hueComponent))))
+        return output
 
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
@@ -376,9 +379,16 @@ class Concat(nn.Module):
 
     def forward(self, x):
         """Forward pass for the YOLOv8 mask Proto module."""
-        print(f'concat forward called')
-        for i in x:
-            print(f'concat shape: {i.shape}')
-        x = torch.cat(x, self.d)
-        print(f'concat output shape: {x.shape}')
+        toConcatList = []
+        if isinstance(x, tuple) or isinstance(x, list):
+            for item in x:
+                if isinstance(item, tuple) or isinstance(item, list):
+                    for i in item:
+                        toConcatList.append(i)
+                else:
+                    toConcatList.append(item)
+        else:
+            toConcatList.append(x)
+
+        x = torch.cat(toConcatList, self.d)
         return x

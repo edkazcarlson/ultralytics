@@ -27,6 +27,7 @@ __all__ = (
     "Proto",
     "RepC3",
     "ResNetLayer",
+    "SplitC2f", 
 )
 
 
@@ -248,13 +249,13 @@ class SplitC2f(nn.Module):
 
     def forward(self, x):
         """Forward pass through C2f layer."""
-        y1 = list(self.cv1(x[0]).chunk(2, 1))
+        y1 = list(self.cv1L(x[0]).chunk(2, 1))
         y1.extend(m(y1[-1]) for m in self.m_lum)
-        y1 = self.cv2(torch.cat(y1, 1))
+        y1 = self.cv2L(torch.cat(y1, 1))
 
-        y2 = list(self.cv1(x[1]).chunk(2, 1))
+        y2 = list(self.cv1H(x[1]).chunk(2, 1))
         y2.extend(m(y2[-1]) for m in self.m_hue)
-        y2 = self.cv2(torch.cat(y2, 1))
+        y2 = self.cv2H(torch.cat(y2, 1))
         return (y1, y2)
 
     def forward_split(self, x):
@@ -322,12 +323,15 @@ def BuildBackbone(startingChannels, depth, maxChannels):
 class FuseModule(nn.Module):
     def __init__(self, valueChannelFinish, hueChannelFinish, kernel = 1):
         super().__init__()
+        print(f'fuse module initialized with {valueChannelFinish}, {hueChannelFinish}')
         self.valueChannelFinish = valueChannelFinish
         self.huChannelFinish = hueChannelFinish
         self.fuseConv = Conv(valueChannelFinish + hueChannelFinish, valueChannelFinish + hueChannelFinish, kernel)
 
-    def forward(self, v, h):
-        x = torch.cat((v, h), 1)
+    def forward(self, tupleOfTensors):
+        for x in tupleOfTensors:
+            print(f'x: {x.shape}')
+        x = torch.cat(tupleOfTensors, 1)
         return self.fuseConv(x)
 
 class ValueSplitConvBlock(nn.Module):

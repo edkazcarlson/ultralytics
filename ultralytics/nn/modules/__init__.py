@@ -36,7 +36,9 @@ from .block import (
     Proto,
     RepC3,
     ResNetLayer,
-    ValueSplitConvBlock
+    ValueSplitConvBlock,
+    FuseModule, 
+    SplitC2f
 )
 from .conv import (
     CBAM,
@@ -52,6 +54,8 @@ from .conv import (
     LightConv,
     RepConv,
     SpatialAttention,
+    FirstSplitConv,
+    SplitConv,
 )
 from .head import OBB, Classify, Detect, Pose, RTDETRDecoder, Segment
 from .transformer import (
