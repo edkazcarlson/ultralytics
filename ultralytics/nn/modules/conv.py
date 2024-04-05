@@ -375,7 +375,6 @@ class Concat(nn.Module):
         """Concatenates a list of tensors along a specified dimension."""
         super().__init__()
         self.d = dimension
-        print(f'\n\n\nConcat being made with dim: {dimension}')
 
     def forward(self, x):
         """Forward pass for the YOLOv8 mask Proto module."""

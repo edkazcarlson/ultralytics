@@ -329,8 +329,6 @@ class FuseModule(nn.Module):
         self.fuseConv = Conv(valueChannelFinish + hueChannelFinish, valueChannelFinish + hueChannelFinish, kernel)
 
     def forward(self, tupleOfTensors):
-        for x in tupleOfTensors:
-            print(f'x: {x.shape}')
         x = torch.cat(tupleOfTensors, 1)
         return self.fuseConv(x)
 
