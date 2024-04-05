@@ -89,7 +89,7 @@ class DetectionTrainer(BaseTrainer):
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a YOLO detection model."""
-        model = DetectionModel(cfg, nc=self.data["nc"], verbose=verbose and RANK == -1, backbonePath=self.args.backbonePath)
+        model = DetectionModel(cfg, nc=self.data["nc"], verbose=verbose and RANK == -1, backbonePath=self.args.backbonePath, ch=self.args.inputCh)
         if weights:
             model.load(weights)
         return model
