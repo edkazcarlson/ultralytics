@@ -28,9 +28,9 @@ class DetectionValidator(BaseValidator):
         ```
     """
 
-    def __init__(self, dataloader=None, save_dir=None, pbar=None, args=None, _callbacks=None):
+    def __init__(self, dataloader=None, save_dir=None, pbar=None, args=None, _callbacks=None, inputCh=3):
         """Initialize detection model with necessary variables and settings."""
-        super().__init__(dataloader, save_dir, pbar, args, _callbacks)
+        super().__init__(dataloader, save_dir, pbar, args, _callbacks, inputCh=inputCh)
         self.nt_per_class = None
         self.is_coco = False
         self.class_map = None
@@ -224,7 +224,7 @@ class DetectionValidator(BaseValidator):
             mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
             batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
         """
-        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, stride=self.stride)
+        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, stride=self.stride, image_transforms=self.image_transforms)
 
     def get_dataloader(self, dataset_path, batch_size):
         """Construct and return dataloader."""
