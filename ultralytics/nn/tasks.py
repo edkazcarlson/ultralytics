@@ -62,6 +62,9 @@ from ultralytics.utils.torch_utils import (
     time_sync,
 )
 
+import traceback
+
+
 try:
     import thop
 except ImportError:
@@ -261,6 +264,10 @@ class BaseModel(nn.Module):
             self.criterion = self.init_criterion()
 
         preds = self.forward(batch["img"]) if preds is None else preds
+
+        # TODO: 
+        # Allow for mid compute values to be output by the model (ex: get the output from layer 3 in a 5 layer model)
+        # Allow me to override the loss function (make a loss function that wraps the existing init_criterion, weight it, and add it to a custom lab loss fn)
         return self.criterion(preds, batch)
 
     def init_criterion(self):
