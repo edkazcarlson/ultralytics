@@ -246,6 +246,22 @@ class v8DetectionLoss:
 
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
 
+class ColorReconstructionLoss():
+    def __init__(self):
+        super().__init__()
+    
+    def __call__(self, pred, gt):
+        return F.mse_loss(pred, gt)
+    
+class MyColorReoncstructionLoss():
+    def __init__(self, colorReconstructionFactor: float, v8DetectionLossFactor: float):
+        self.colorReconstructionFactor = colorReconstructionFactor
+        self.v8DetectionLossFactor = v8DetectionLossFactor
+
+    def __call__(self, preds, backboneOutput, batch) -> torch.Any:
+        colorGt = batch["color"]
+        labelBatch = batch["label"]
+        return self.colorReconstructionFactor * ColorReconstructionLoss(backboneOutput, colorGt) + self.v8DetectionLossFactor * v8DetectionLoss(preds, labelBatch)
 
 class v8SegmentationLoss(v8DetectionLoss):
     """Criterion class for computing training losses."""

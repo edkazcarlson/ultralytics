@@ -120,6 +120,7 @@ class BaseModel(nn.Module):
             (torch.Tensor): The last output of the model.
         """
         y, dt, embeddings = [], [], []  # outputs
+        print(f'initial shape: {x.shape}')
         for m in self.model:
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
@@ -133,6 +134,9 @@ class BaseModel(nn.Module):
                 embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
                 if m.i == max(embed):
                     return torch.unbind(torch.cat(embeddings, 1), dim=0)
+            if m.i == 21:
+                backboneOutput = x
+        print(f'self.backboneOutput.shape: {self.backboneOutput.shape}')
         return x
 
     def _predict_augment(self, x):
@@ -268,7 +272,7 @@ class BaseModel(nn.Module):
         # TODO: 
         # Allow for mid compute values to be output by the model (ex: get the output from layer 3 in a 5 layer model)
         # Allow me to override the loss function (make a loss function that wraps the existing init_criterion, weight it, and add it to a custom lab loss fn)
-        return self.criterion(preds, batch)
+        return self.criterion(preds, self.backboneOutput, batch)
 
     def init_criterion(self):
         """Initialize the loss criterion for the BaseModel."""
@@ -278,11 +282,10 @@ class BaseModel(nn.Module):
 class DetectionModel(BaseModel):
     """YOLOv8 detection model."""
 
-    def __init__(self, cfg="yolov8n.yaml", ch=3, nc=None, verbose=True, colorConvOutputSize = 0, backbonePath = None):  # model, input channels, number of classes, verbose, output channels from the 1x1 conv layer
+    def __init__(self, cfg="yolov8n.yaml", ch=3, nc=None, verbose=True, colorConvOutputSize = 0, backbonePath = None, criterion = None):  # model, input channels, number of classes, verbose, output channels from the 1x1 conv layer
         """Initialize the YOLOv8 detection model with the given config and parameters."""
         super().__init__()
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
-
         # Define model
         ch = self.yaml["ch"] = self.yaml.get("ch", ch)  # input channels
         if nc and nc != self.yaml["nc"]:
@@ -315,6 +318,9 @@ class DetectionModel(BaseModel):
             self.load_backbone(backbonePath)
         else:
             LOGGER.info("No backbone weights loaded.")
+
+        if criterion != None:
+            self.criterion = criterion
 
     def load_backbone(self, backbonePath):
         backbone = torch.load(backbonePath)
