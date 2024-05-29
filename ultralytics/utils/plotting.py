@@ -1105,24 +1105,39 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path("runs/detec
         n (int, optional): Maximum number of feature maps to plot. Defaults to 32.
         save_dir (Path, optional): Directory to save results. Defaults to Path('runs/detect/exp').
     """
+    import os
+    from tqdm import tqdm
     for m in {"Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"}:  # all model heads
         if m in module_type:
             return
     if isinstance(x, torch.Tensor):
         _, channels, height, width = x.shape  # batch, channels, height, width
         if height > 1 and width > 1:
-            f = save_dir / f"stage{stage}_{module_type.split('.')[-1]}_features.png"  # filename
+            img = x[0].cpu().detach()
+            blocks = torch.chunk(img, channels, dim=0)  # select batch index 0, block by channels
+            # n = min(n, channels)  # number of plots
+            # _, ax = plt.subplots(math.ceil(n / 8), 8, tight_layout=True)  # 8 rows x n/8 cols
+            # ax = ax.ravel()
+            # plt.subplots_adjust(wspace=0.05, hspace=0.05)
+            # for i in range(n):
+            #     block = blocks[i].squeeze().detach().numpy()
+            #     ax[i].imshow(block + block.min())  # cmap='gray'
+            #     ax[i].axis("off")
+            subDirName = f"stage{stage}_{module_type.split('.')[-1]}"
+            if not (save_dir / subDirName).exists():
+                (save_dir / subDirName).mkdir(parents=True, exist_ok=True)
+            print(f'for {subDirName}. {img.shape}')
+            for i, block in tqdm(enumerate(blocks)):
+                block = block.squeeze().detach().numpy()
+                plt.imshow(block + block.min())
+                plt.axis("off")
+                f = save_dir / f"{subDirName}/ch{i}_features.png"  # filename
+                # print(f'saving {f}')
+                plt.savefig(f, dpi=300, bbox_inches="tight")
+            npPath = os.path.join(save_dir, subDirName, 'array.npy')
+            # print(f'saving {img.shape} {npPath}')
+            np.save(npPath, img.numpy())  # npy save
 
-            blocks = torch.chunk(x[0].cpu(), channels, dim=0)  # select batch index 0, block by channels
-            n = min(n, channels)  # number of plots
-            _, ax = plt.subplots(math.ceil(n / 8), 8, tight_layout=True)  # 8 rows x n/8 cols
-            ax = ax.ravel()
-            plt.subplots_adjust(wspace=0.05, hspace=0.05)
-            for i in range(n):
-                ax[i].imshow(blocks[i].squeeze())  # cmap='gray'
-                ax[i].axis("off")
-
-            LOGGER.info(f"Saving {f}... ({n}/{channels})")
-            plt.savefig(f, dpi=300, bbox_inches="tight")
-            plt.close()
-            np.save(str(f.with_suffix(".npy")), x[0].cpu().numpy())  # npy save
+            # LOGGER.info(f"Saving {f}... ({n}/{channels})")
+            # plt.savefig(f, dpi=300, bbox_inches="tight")
+            # plt.close()

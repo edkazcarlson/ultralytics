@@ -120,6 +120,7 @@ class BaseModel(nn.Module):
             (torch.Tensor): The last output of the model.
         """
         y, dt, embeddings = [], [], []  # outputs
+        counter = 0
         for m in self.model:
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
@@ -127,12 +128,14 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
-            if visualize:
+            if visualize and counter > 20:
+                print('starting feat vis')
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
             if embed and m.i in embed:
                 embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
                 if m.i == max(embed):
                     return torch.unbind(torch.cat(embeddings, 1), dim=0)
+            counter+=1
         return x
 
     def _predict_augment(self, x):
