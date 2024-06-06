@@ -30,6 +30,27 @@ __all__ = (
     "SplitC2f", 
 )
 
+class CustomUpsampler(nn.Module):
+    def __init__(self, iterations, ch):
+        super().__init__()
+        self.iterations = iterations
+        self.deconvs = []
+        for i in range(iterations):
+            if i % 2 == 1:
+                outCh = max(ch // 2, 3)
+            else:
+                outCh = ch
+            self.deconvs.append(nn.ConvTranspose2d(ch, outCh, 2, 2, 0, bias=True))
+            ch = outCh
+        self.deconvs = nn.ModuleList(self.deconvs)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        for i in range(self.iterations):
+            x = self.deconvs[i](x)
+            x = self.relu(x)
+        return x
+
 
 class DFL(nn.Module):
     """

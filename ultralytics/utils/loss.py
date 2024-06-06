@@ -259,7 +259,7 @@ class MyColorReoncstructionLoss():
         self.v8DetectionLossFactor = v8DetectionLossFactor
 
     def __call__(self, preds, backboneOutput, batch) -> torch.Any:
-        colorGt = batch["color"]
+        colorGt = batch["img"]
         labelBatch = batch["label"]
         return self.colorReconstructionFactor * ColorReconstructionLoss(backboneOutput, colorGt) + self.v8DetectionLossFactor * v8DetectionLoss(preds, labelBatch)
 

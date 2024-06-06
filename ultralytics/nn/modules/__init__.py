@@ -38,7 +38,8 @@ from .block import (
     ResNetLayer,
     ValueSplitConvBlock,
     FuseModule, 
-    SplitC2f
+    SplitC2f,
+    CustomUpsampler
 )
 from .conv import (
     CBAM,

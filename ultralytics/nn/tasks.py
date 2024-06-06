@@ -44,7 +44,8 @@ from ultralytics.nn.modules import (
     FirstSplitConv,
     SplitConv,
     SplitC2f,
-    FuseModule
+    FuseModule,
+    CustomUpsampler
 )
 
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
@@ -120,13 +121,20 @@ class BaseModel(nn.Module):
             (torch.Tensor): The last output of the model.
         """
         y, dt, embeddings = [], [], []  # outputs
-        print(f'initial shape: {x.shape}')
+        # print(f'initial input size: {x.shape}')
         for m in self.model:
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
+            # print(f'm.i: {m.i}, m: {m}')
+            # if isinstance(x, list):
+                # for a in x:
+                    # print(f'a.shape: {a.shape}.')
+            # else:
+                # print(f'x.shape: {x.shape}.')
+            # print(f'')
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
@@ -135,8 +143,12 @@ class BaseModel(nn.Module):
                 if m.i == max(embed):
                     return torch.unbind(torch.cat(embeddings, 1), dim=0)
             if m.i == 21:
-                backboneOutput = x
-        print(f'self.backboneOutput.shape: {self.backboneOutput.shape}')
+                print(self.criterion)
+                self.backboneOutput = x
+                self.backboneOutput = self.upsampler(self.backboneOutput)
+                self.backboneOutput = self.colorCollapse(self.backboneOutput)
+        # print(f'self.backboneOutput.shape: {self.backboneOutput.shape}')
+        # exit()
         return x
 
     def _predict_augment(self, x):
@@ -285,6 +297,9 @@ class DetectionModel(BaseModel):
     def __init__(self, cfg="yolov8n.yaml", ch=3, nc=None, verbose=True, colorConvOutputSize = 0, backbonePath = None, criterion = None):  # model, input channels, number of classes, verbose, output channels from the 1x1 conv layer
         """Initialize the YOLOv8 detection model with the given config and parameters."""
         super().__init__()
+        self.upsampler = CustomUpsampler(8, 256)
+        self.colorCollapse = nn.Conv2d(int((256 // (2 ** (8 / 2)))), 3, 1, 1, 0, bias=False)
+
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
         # Define model
         ch = self.yaml["ch"] = self.yaml.get("ch", ch)  # input channels
@@ -294,6 +309,9 @@ class DetectionModel(BaseModel):
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=ch, verbose=verbose, colorConvOutputSize=colorConvOutputSize)  # model, savelist
         self.names = {i: f"{i}" for i in range(self.yaml["nc"])}  # default names dict
         self.inplace = self.yaml.get("inplace", True)
+
+        if criterion != None:
+            self.criterion = criterion
 
         # Build strides
         m = self.model[-1]  # Detect()
@@ -318,9 +336,6 @@ class DetectionModel(BaseModel):
             self.load_backbone(backbonePath)
         else:
             LOGGER.info("No backbone weights loaded.")
-
-        if criterion != None:
-            self.criterion = criterion
 
     def load_backbone(self, backbonePath):
         backbone = torch.load(backbonePath)
