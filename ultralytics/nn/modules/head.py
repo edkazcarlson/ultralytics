@@ -16,6 +16,23 @@ from .utils import bias_init_with_prob, linear_init
 
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
 
+class MemoryModule(nn.Module):
+    def __init__(self, nc, reg_max, lapDist: int, laps: int, memories: int=10) -> None:
+        super().__init__()
+        self.nc = nc
+        self.reg_max = reg_max
+        self.lapDist = lapDist
+        self.laps = laps
+        self.memorySize = self.nc + 4 * self.reg_max
+        # for every memory, create a memory buffer of size nc + 4 * reg_max
+        self.memories = nn.Parameter(, requires_grad=True)
+
+    def forward(self, x):
+        for _ in range(self.laps):
+            # the first i values in the current memory buffer are the "real" values that need to get output in the end
+            # do KQ self attention on the memory buffer.
+            # of the values after the first i, find the one that is the farthest away from the first i values, add this to the memory buffer
+            # go to next 
 
 class Detect(nn.Module):
     """YOLOv8 Detect head for detection models."""
@@ -40,6 +57,8 @@ class Detect(nn.Module):
         )
         self.cv3 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
         self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
+
+
 
     def forward(self, x):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
