@@ -17,22 +17,101 @@ from .utils import bias_init_with_prob, linear_init
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
 
 class MemoryModule(nn.Module):
-    def __init__(self, nc, reg_max, lapDist: int, laps: int, memories: int=10) -> None:
+    def __init__(self, nc, reg_max, lapDist: int=1, laps: int=2, memories: int=2, heads: int=2, dropout: float=0.05) -> None:
+        """
+        nc: from detect
+        reg_max: from detect
+        lapDist: the number of SA layers in a single "lap" of thought
+        laps: the number of laps of thought
+        memories: the number of learnable memory params to store.
+        """
         super().__init__()
         self.nc = nc
         self.reg_max = reg_max
         self.lapDist = lapDist
         self.laps = laps
-        self.memorySize = self.nc + 4 * self.reg_max
+        self.originalTokenSize = self.nc + 4 * self.reg_max 
+        self.memorySize = int(self.originalTokenSize// 12)
+        self.heads = heads
+        self.dropout = dropout
+        self.positionalEncodingSize = 2
+        self.memoryTokenCount = memories
+
         # for every memory, create a memory buffer of size nc + 4 * reg_max
-        self.memories = nn.Parameter(, requires_grad=True)
+        self.memories = [nn.Parameter(torch.empty(memories, self.memorySize), requires_grad=True) for _ in range(self.lapDist)]
+        for i in range(self.lapDist):
+            nn.init.kaiming_uniform_(self.memories[i], a=math.sqrt(5))
+
+        self.selfAttentionLayers = nn.ModuleList([nn.MultiheadAttention(self.memorySize, self.heads, dropout=self.dropout, batch_first=True) for _ in range(self.lapDist)])
+
+        self.queries = nn.ModuleList([nn.Linear(self.memorySize, self.memorySize) for _ in range(self.lapDist)])
+        self.keys = nn.ModuleList([nn.Linear(self.memorySize, self.memorySize) for _ in range(self.lapDist)])
+        self.values = nn.ModuleList([nn.Linear(self.memorySize, self.memorySize) for _ in range(self.lapDist)])
+
+        self.layerNorms = nn.ModuleList([nn.LayerNorm(self.memorySize) for _ in range(self.lapDist)])
+
+        self.inputTranslationModule = nn.Linear(self.originalTokenSize + 2, self.memorySize)
+        self.outputTranslationModule = nn.Linear(self.memorySize, self.originalTokenSize)
+        self.nonLin = nn.ReLU()
+
+    
+    def buildPositionalEncoding(self, h, w):
+        with torch.no_grad():
+            posW = torch.arange(w)
+            posW = posW.unsqueeze(0).repeat(w, 1).reshape(w * w) /w
+            posH = torch.arange(h)
+            posH = posH.unsqueeze(0).repeat(h, 1).T.reshape(h * h) / h
+            return torch.concat([posH.unsqueeze(0), posW.unsqueeze(0)]).reshape([2,h,w]).unsqueeze(0)
+
+    def CurDevice(self):
+        return 'cuda' if next(self.selfAttentionLayers[0].parameters()).is_cuda else 'cpu'
 
     def forward(self, x):
-        for _ in range(self.laps):
-            # the first i values in the current memory buffer are the "real" values that need to get output in the end
-            # do KQ self attention on the memory buffer.
-            # of the values after the first i, find the one that is the farthest away from the first i values, add this to the memory buffer
-            # go to next 
+        """
+        x: batch channel h w 
+        """
+        originalB, originalC, originalH, originalW = x.shape
+        curDev = 'cuda' if x.is_cuda else 'cpu'
+        # Add positional encoding, translate into memory language
+        posEncoding = self.buildPositionalEncoding(x.shape[2],  x.shape[3]).to(curDev)
+        originalTokens = x.shape[-1] * x.shape[-2]
+        posEncoding = posEncoding.repeat(x.shape[0], 1, 1, 1)
+        x = torch.concat([x, posEncoding], dim=1)
+        x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1) # batch h*w channel
+
+        x = self.nonLin(self.inputTranslationModule(x))
+
+        # Loop over memories, think
+        for lap in range(self.laps):
+            for i in range(self.lapDist):
+                selfAttention = self.selfAttentionLayers[i]
+                lapMem = self.memories[i].to(curDev).unsqueeze(0).repeat(x.shape[0], 1, 1) # b, tokens, tokensize
+                x = torch.concat([x, lapMem], dim=1)
+                # do KQV self attention on the memory buffer.
+
+                key = self.nonLin(self.keys[i](x))
+                query = self.nonLin(self.queries[i](x))
+                value = self.nonLin(self.values[i](x))
+
+                x, _ = selfAttention(query, key, value) #b * token * tokensize
+                
+                # of the values after the first i, find the memory token with the largest spike, add this to the thought buffer
+                memoryOutput = x[:, -1 * self.memoryTokenCount:]
+                memoryOutputNorms = torch.norm(memoryOutput, p=2, dim=2) # b * memories
+                assert memoryOutputNorms.shape[1] == self.memoryTokenCount, f'{memoryOutputNorms.shape}, {self.memoryTokenCount}'# first is batch size, second is the number of memory tokens
+                maxSpike = torch.argmax(memoryOutputNorms, dim=1)
+                memoryToAdd = memoryOutput[:,maxSpike]
+                x = torch.concat([x, memoryToAdd], dim=1)     
+                # go to next iteration
+                x = self.nonLin(self.layerNorms[i](x))
+                
+        # the first i values in the current memory buffer are the "real" values that need to get output in the end
+        # pick out only the tokens that originate from the original backbone
+        x = x[:, :originalTokens]
+        # translate back into original language
+        x = self.nonLin(self.outputTranslationModule(x))
+        x = x.reshape(originalB, originalC, originalH, originalW)
+        return x
 
 class Detect(nn.Module):
     """YOLOv8 Detect head for detection models."""
@@ -58,12 +137,15 @@ class Detect(nn.Module):
         self.cv3 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
         self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
 
-
+        self.memories = nn.ModuleList([MemoryModule(self.nc, self.reg_max) for _ in range(3)])
 
     def forward(self, x):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
         for i in range(self.nl):
-            x[i] = torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i])), 1)
+            x[i] = self.memories[i](torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i])), 1))
+            # x[0] shape: torch.Size([16, 144, 80, 80])
+            # x[1] shape: torch.Size([16, 144, 40, 40])
+            # x[2] shape: torch.Size([16, 144, 20, 20])
         if self.training:  # Training path
             return x
 
