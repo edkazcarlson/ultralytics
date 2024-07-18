@@ -17,7 +17,7 @@ from .utils import bias_init_with_prob, linear_init
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
 
 class MemoryModule(nn.Module):
-    def __init__(self, nc, reg_max, lapDist: int=1, laps: int=2, memories: int=2, heads: int=2, dropout: float=0.05) -> None:
+    def __init__(self, nc, reg_max, lapDist: int=3, laps: int=3, memories: int=5, heads: int=2, dropout: float=0.05) -> None:
         """
         nc: from detect
         reg_max: from detect
@@ -38,7 +38,7 @@ class MemoryModule(nn.Module):
         self.memoryTokenCount = memories
 
         # for every memory, create a memory buffer of size nc + 4 * reg_max
-        self.memories = [nn.Parameter(torch.empty(memories, self.memorySize), requires_grad=True) for _ in range(self.lapDist)]
+        self.memories = nn.ParameterList([nn.Parameter(torch.empty(1, memories, self.memorySize), requires_grad=True) for _ in range(self.lapDist)])
         for i in range(self.lapDist):
             nn.init.kaiming_uniform_(self.memories[i], a=math.sqrt(5))
 
@@ -70,6 +70,8 @@ class MemoryModule(nn.Module):
         """
         x: batch channel h w 
         """
+        #print(f'\n\nmemories:\n{self.memories[0]}')
+        #print(f'\n\ninputTranslationModule:\n{self.inputTranslationModule.weight}')
         originalB, originalC, originalH, originalW = x.shape
         curDev = 'cuda' if x.is_cuda else 'cpu'
         # Add positional encoding, translate into memory language
@@ -85,7 +87,7 @@ class MemoryModule(nn.Module):
         for lap in range(self.laps):
             for i in range(self.lapDist):
                 selfAttention = self.selfAttentionLayers[i]
-                lapMem = self.memories[i].to(curDev).unsqueeze(0).repeat(x.shape[0], 1, 1) # b, tokens, tokensize
+                lapMem = self.memories[i].repeat(x.shape[0], 1, 1) # b, tokens, tokensize
                 x = torch.concat([x, lapMem], dim=1)
                 # do KQV self attention on the memory buffer.
 
