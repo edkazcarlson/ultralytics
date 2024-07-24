@@ -44,10 +44,6 @@ class MemoryModule(nn.Module):
 
         self.selfAttentionLayers = nn.ModuleList([nn.MultiheadAttention(self.memorySize, self.heads, dropout=self.dropout, batch_first=True) for _ in range(self.lapDist)])
 
-        self.queries = nn.ModuleList([nn.Linear(self.memorySize, self.memorySize) for _ in range(self.lapDist)])
-        self.keys = nn.ModuleList([nn.Linear(self.memorySize, self.memorySize) for _ in range(self.lapDist)])
-        self.values = nn.ModuleList([nn.Linear(self.memorySize, self.memorySize) for _ in range(self.lapDist)])
-
         self.layerNorms = nn.ModuleList([nn.LayerNorm(self.memorySize) for _ in range(self.lapDist)])
 
         self.inputTranslationModule = nn.Linear(self.originalTokenSize + 2, self.memorySize)
@@ -91,11 +87,7 @@ class MemoryModule(nn.Module):
                 x = torch.concat([x, lapMem], dim=1)
                 # do KQV self attention on the memory buffer.
 
-                key = self.nonLin(self.keys[i](x))
-                query = self.nonLin(self.queries[i](x))
-                value = self.nonLin(self.values[i](x))
-
-                x, _ = selfAttention(query, key, value) #b * token * tokensize
+                x, _ = selfAttention(x, x, x) #b * token * tokensize
                 
                 # of the values after the first i, find the memory token with the largest spike, add this to the thought buffer
                 memoryOutput = x[:, -1 * self.memoryTokenCount:]
