@@ -17,7 +17,7 @@ from .utils import bias_init_with_prob, linear_init
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
 
 class MemoryModule(nn.Module):
-    def __init__(self, nc, reg_max, lapDist: int=3, laps: int=3, memories: int=5, heads: int=2, dropout: float=0.05) -> None:
+    def __init__(self, nc, reg_max, lapDist: int=3, laps: int=2, memories: int=4, heads: int=2, dropout: float=0.05) -> None:
         """
         nc: from detect
         reg_max: from detect
@@ -66,6 +66,7 @@ class MemoryModule(nn.Module):
         """
         x: batch channel h w 
         """
+        b,c,h,w = x.shape
         #print(f'\n\nmemories:\n{self.memories[0]}')
         #print(f'\n\ninputTranslationModule:\n{self.inputTranslationModule.weight}')
         originalB, originalC, originalH, originalW = x.shape
@@ -76,7 +77,6 @@ class MemoryModule(nn.Module):
         posEncoding = posEncoding.repeat(x.shape[0], 1, 1, 1)
         x = torch.concat([x, posEncoding], dim=1)
         x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1) # batch h*w channel
-
         x = self.nonLin(self.inputTranslationModule(x))
 
         # Loop over memories, think
