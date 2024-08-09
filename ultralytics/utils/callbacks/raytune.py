@@ -14,11 +14,28 @@ except (ImportError, AssertionError):
 
 def on_fit_epoch_end(trainer):
     """Sends training metrics to Ray Tune at end of each epoch."""
-    if ray.train._internal.session._get_session():  # replacement for deprecated ray.tune.is_session_enabled()
-        metrics = trainer.metrics
-        metrics["epoch"] = trainer.epoch
-        session.report(metrics)
+    working = False
+    try:
+        raySessionOutput = ray.train._internal.session._get_session()  # replacement for deprecated ray.tune.is_session_enabled()
+        print(f'Got raySessionOutput:\n{raySessionOutput}')
+        working = True
+    except Exception as e:
+        print(f'ray.train._internal.session._get_session() failed, reason:\n{e}')
 
+    if not working:
+        try:
+            raySessionOutput = ray.train._internal.session.get_session()  # replacement for deprecated ray.tune.is_session_enabled()
+            print(f'Got raySessionOutput:\n{raySessionOutput}')
+            working = True
+        except Exception as e:
+            print(f'ray.train._internal.session.get_session() failed, reason:\n{e}')
+
+    if not working:
+        print('failed to get raytune to work, falling out....')
+        return
+    metrics = trainer.metrics
+    metrics["epoch"] = trainer.epoch
+    session.report(metrics)
 
 callbacks = (
     {

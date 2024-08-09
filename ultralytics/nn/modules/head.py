@@ -17,7 +17,7 @@ from .utils import bias_init_with_prob, linear_init
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
 
 class MemoryModule(nn.Module):
-    def __init__(self, nc, reg_max, lapDist: int=3, laps: int=2, memories: int=4, heads: int=2, dropout: float=0.05) -> None:
+    def __init__(self, nc, reg_max, lapDist: int=3, laps: int=2, memories: int=8, heads: int=1, dropout: float=0.05) -> None:
         """
         nc: from detect
         reg_max: from detect
@@ -31,7 +31,7 @@ class MemoryModule(nn.Module):
         self.lapDist = lapDist
         self.laps = laps
         self.originalTokenSize = self.nc + 4 * self.reg_max 
-        self.memorySize = int(self.originalTokenSize// 12)
+        self.memorySize = 16
         self.heads = heads
         self.dropout = dropout
         self.positionalEncodingSize = 2
@@ -47,17 +47,17 @@ class MemoryModule(nn.Module):
         self.layerNorms = nn.ModuleList([nn.LayerNorm(self.memorySize) for _ in range(self.lapDist)])
 
         self.inputTranslationModule = nn.Linear(self.originalTokenSize + 2, self.memorySize)
-        self.outputTranslationModule = nn.Linear(self.memorySize, self.originalTokenSize)
+        self.outputTranslationModule = nn.Linear(self.memorySize + self.originalTokenSize, self.originalTokenSize)
         self.nonLin = nn.ReLU()
 
     
-    def buildPositionalEncoding(self, h, w):
+    def buildPositionalEncoding(self, h, w, curDev, dtype):
         with torch.no_grad():
-            posW = torch.arange(w)
-            posW = posW.unsqueeze(0).repeat(w, 1).reshape(w * w) /w
-            posH = torch.arange(h)
-            posH = posH.unsqueeze(0).repeat(h, 1).T.reshape(h * h) / h
-            return torch.concat([posH.unsqueeze(0), posW.unsqueeze(0)]).reshape([2,h,w]).unsqueeze(0)
+            posW = torch.arange(w, device = curDev)
+            posW = posW.unsqueeze(0).repeat(h, 1).reshape(w * h) /w
+            posH = torch.arange(h, device=curDev)
+            posH = posH.unsqueeze(0).repeat(w, 1).T.reshape(w * h) / h
+            return torch.concat([posH.unsqueeze(0), posW.unsqueeze(0)]).reshape([2,h,w]).unsqueeze(0).to(dtype=dtype)
 
     def CurDevice(self):
         return 'cuda' if next(self.selfAttentionLayers[0].parameters()).is_cuda else 'cpu'
@@ -67,23 +67,21 @@ class MemoryModule(nn.Module):
         x: batch channel h w 
         """
         b,c,h,w = x.shape
-        #print(f'\n\nmemories:\n{self.memories[0]}')
-        #print(f'\n\ninputTranslationModule:\n{self.inputTranslationModule.weight}')
-        originalB, originalC, originalH, originalW = x.shape
         curDev = 'cuda' if x.is_cuda else 'cpu'
         # Add positional encoding, translate into memory language
-        posEncoding = self.buildPositionalEncoding(x.shape[2],  x.shape[3]).to(curDev)
-        originalTokens = x.shape[-1] * x.shape[-2]
-        posEncoding = posEncoding.repeat(x.shape[0], 1, 1, 1)
+        posEncoding = self.buildPositionalEncoding(h, w, curDev, dtype=x.dtype)
+        originalTokens = h * w
+        posEncoding = posEncoding.repeat(b, 1, 1, 1)
+        origX = x.reshape(b,c,h*w).permute(0,2,1)
         x = torch.concat([x, posEncoding], dim=1)
-        x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1) # batch h*w channel
+        x = x.reshape(b, c+2, -1).permute(0, 2, 1) # batch h*w channel
         x = self.nonLin(self.inputTranslationModule(x))
 
         # Loop over memories, think
         for lap in range(self.laps):
             for i in range(self.lapDist):
                 selfAttention = self.selfAttentionLayers[i]
-                lapMem = self.memories[i].repeat(x.shape[0], 1, 1) # b, tokens, tokensize
+                lapMem = self.memories[i].repeat(b, 1, 1) # b, tokens, tokensize
                 x = torch.concat([x, lapMem], dim=1)
                 # do KQV self attention on the memory buffer.
 
@@ -91,11 +89,12 @@ class MemoryModule(nn.Module):
                 
                 # of the values after the first i, find the memory token with the largest spike, add this to the thought buffer
                 memoryOutput = x[:, -1 * self.memoryTokenCount:]
+                existingThought = x[:, :-1 * self.memoryTokenCount]
                 memoryOutputNorms = torch.norm(memoryOutput, p=2, dim=2) # b * memories
-                assert memoryOutputNorms.shape[1] == self.memoryTokenCount, f'{memoryOutputNorms.shape}, {self.memoryTokenCount}'# first is batch size, second is the number of memory tokens
+                # assert memoryOutputNorms.shape[1] == self.memoryTokenCount, f'{memoryOutputNorms.shape}, {self.memoryTokenCount}'# first is batch size, second is the number of memory tokens
                 maxSpike = torch.argmax(memoryOutputNorms, dim=1)
-                memoryToAdd = memoryOutput[:,maxSpike]
-                x = torch.concat([x, memoryToAdd], dim=1)     
+                memoryToAdd = memoryOutput[torch.arange(b),maxSpike, :].reshape(b, 1, -1)
+                x = torch.concat([existingThought, memoryToAdd], dim=1)     
                 # go to next iteration
                 x = self.nonLin(self.layerNorms[i](x))
                 
@@ -103,8 +102,11 @@ class MemoryModule(nn.Module):
         # pick out only the tokens that originate from the original backbone
         x = x[:, :originalTokens]
         # translate back into original language
+        x = torch.concat([x, origX], dim=2)
         x = self.nonLin(self.outputTranslationModule(x))
-        x = x.reshape(originalB, originalC, originalH, originalW)
+        x = x.reshape(b, c, h, w)
+        if torch.isnan(x).any():
+            print(f'FOUND A NAN IN X')
         return x
 
 class Detect(nn.Module):

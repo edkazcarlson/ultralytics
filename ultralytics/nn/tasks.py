@@ -953,7 +953,13 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         if i == 0:
             ch = []
         ch.append(c2)
-    return nn.Sequential(*layers), sorted(save)
+    output = nn.Sequential(*layers), sorted(save)
+    # for block in output[0]:
+    #     block.requires_grad = False
+    #     print(f'setting {block} to not require grad. freezing')
+    # output[0][22].requires_grad = True
+    # print(f'unfreezing {output[0][22]}')
+    return output
 
 
 def yaml_model_load(path):
