@@ -17,7 +17,7 @@ from .utils import bias_init_with_prob, linear_init
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
 
 class MemoryModule(nn.Module):
-    def __init__(self, nc, reg_max, lapDist: int=3, laps: int=2, memories: int=8, heads: int=1, dropout: float=0.05) -> None:
+    def __init__(self, nc, reg_max, lapDist: int=5, laps: int=1, memories: int=8, heads: int=1, dropout: float=0.05) -> None:
         """
         nc: from detect
         reg_max: from detect
@@ -44,11 +44,12 @@ class MemoryModule(nn.Module):
 
         self.selfAttentionLayers = nn.ModuleList([nn.MultiheadAttention(self.memorySize, self.heads, dropout=self.dropout, batch_first=True) for _ in range(self.lapDist)])
 
-        self.layerNorms = nn.ModuleList([nn.LayerNorm(self.memorySize) for _ in range(self.lapDist)])
+        # self.layerNorms = nn.ModuleList([nn.LayerNorm(self.memorySize) for _ in range(self.lapDist)])
 
         self.inputTranslationModule = nn.Linear(self.originalTokenSize + 2, self.memorySize)
         self.outputTranslationModule = nn.Linear(self.memorySize + self.originalTokenSize, self.originalTokenSize)
-        self.nonLin = nn.ReLU()
+        self.nonLin = nn.GELU()
+        # self.nonLin = nn.ReLU()
 
     
     def buildPositionalEncoding(self, h, w, curDev, dtype):
@@ -79,6 +80,7 @@ class MemoryModule(nn.Module):
 
         # Loop over memories, think
         for lap in range(self.laps):
+            # x = torch.softmax(x, dim=2)
             for i in range(self.lapDist):
                 selfAttention = self.selfAttentionLayers[i]
                 lapMem = self.memories[i].repeat(b, 1, 1) # b, tokens, tokensize
@@ -86,6 +88,7 @@ class MemoryModule(nn.Module):
                 # do KQV self attention on the memory buffer.
 
                 x, _ = selfAttention(x, x, x) #b * token * tokensize
+                x = self.nonLin(x)
                 
                 # of the values after the first i, find the memory token with the largest spike, add this to the thought buffer
                 memoryOutput = x[:, -1 * self.memoryTokenCount:]
@@ -94,9 +97,9 @@ class MemoryModule(nn.Module):
                 # assert memoryOutputNorms.shape[1] == self.memoryTokenCount, f'{memoryOutputNorms.shape}, {self.memoryTokenCount}'# first is batch size, second is the number of memory tokens
                 maxSpike = torch.argmax(memoryOutputNorms, dim=1)
                 memoryToAdd = memoryOutput[torch.arange(b),maxSpike, :].reshape(b, 1, -1)
-                x = torch.concat([existingThought, memoryToAdd], dim=1)     
+                x = torch.concat([existingThought, memoryToAdd], dim=1)     # b * token * tokensize
                 # go to next iteration
-                x = self.nonLin(self.layerNorms[i](x))
+                # x = self.nonLin(self.layerNorms[i](x))
                 
         # the first i values in the current memory buffer are the "real" values that need to get output in the end
         # pick out only the tokens that originate from the original backbone
