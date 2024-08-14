@@ -52,7 +52,39 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
+    
+class SplitConv(nn.Module):
+    """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
 
+    default_act = nn.SiLU()  # default activation
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+        """Initialize Conv layer with given arguments including activation."""
+        super().__init__()
+        self.c = int(c1/2)
+        self.c2 = int(c2/2)
+        self.conv = nn.Conv2d(self.c, self.c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        self.conv2 = nn.Conv2d(self.c, self.c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        self.bn = nn.BatchNorm2d(self.c2)
+        self.bn2 = nn.BatchNorm2d(self.c2)
+        self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+
+    def forward(self, x):
+        """Apply convolution, batch normalization and activation to input tensor."""
+        shapes = x[:,0:self.c]
+        text = x[:,self.c:]
+        shapes = self.act(self.bn(self.conv(shapes)))
+        text = self.act(self.bn2(self.conv2(text)))
+        output = torch.cat([shapes, text], dim=1)
+        return output
+
+    def forward_fuse(self, x):
+        """Perform transposed convolution of 2D data."""
+        shapes = x[:,0:self.c]
+        text = x[:,self.c:]
+        shapes = self.act(self.conv(shapes))
+        text = self.act(self.conv2(text))
+        return torch.cat([shapes, text], dim=1)
 
 class Conv2(Conv):
     """Simplified RepConv module with Conv fusing."""

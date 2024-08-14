@@ -68,6 +68,7 @@ class BaseDataset(Dataset):
     ):
         """Initialize BaseDataset with given configuration and options."""
         super().__init__()
+        print(f'base init with: {append_label_transforms}')
         self.override_label_transforms = override_label_transforms
         self.append_label_transforms = append_label_transforms
         self.img_path = img_path
