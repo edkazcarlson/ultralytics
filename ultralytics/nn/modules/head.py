@@ -16,6 +16,80 @@ from .utils import bias_init_with_prob, linear_init
 
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
 
+class JustTransform(nn.Module):
+    def __init__(self, nc, reg_max, lapDist: int=5, laps: int=1, heads: int=1, dropout: float=0.05) -> None:
+        """
+        nc: from detect
+        reg_max: from detect
+        lapDist: the number of SA layers in a single "lap" of thought
+        laps: the number of laps of thought
+        memories: the number of learnable memory params to store.
+        """
+        super().__init__()
+        self.nc = nc
+        self.reg_max = reg_max
+        self.lapDist = lapDist
+        self.laps = laps
+        self.originalTokenSize = self.nc + 4 * self.reg_max 
+        self.memorySize = 16
+        self.heads = heads
+        self.dropout = dropout
+        self.positionalEncodingSize = 2
+
+        self.selfAttentionLayers = nn.ModuleList([nn.MultiheadAttention(self.memorySize, self.heads, dropout=self.dropout, batch_first=True) for _ in range(self.lapDist)])
+
+        # self.layerNorms = nn.ModuleList([nn.LayerNorm(self.memorySize) for _ in range(self.lapDist)])
+
+        self.inputTranslationModule = nn.Linear(self.originalTokenSize + 2, self.memorySize)
+        self.outputTranslationModule = nn.Linear(self.memorySize + self.originalTokenSize, self.originalTokenSize)
+        self.nonLin = nn.GELU()
+        # self.nonLin = nn.ReLU()
+
+    
+    def buildPositionalEncoding(self, h, w, curDev, dtype):
+        with torch.no_grad():
+            posW = torch.arange(w, device = curDev)
+            posW = posW.unsqueeze(0).repeat(h, 1).reshape(w * h) /w
+            posH = torch.arange(h, device=curDev)
+            posH = posH.unsqueeze(0).repeat(w, 1).T.reshape(w * h) / h
+            return torch.concat([posH.unsqueeze(0), posW.unsqueeze(0)]).reshape([2,h,w]).unsqueeze(0).to(dtype=dtype)
+
+    def CurDevice(self):
+        return 'cuda' if next(self.selfAttentionLayers[0].parameters()).is_cuda else 'cpu'
+
+    def forward(self, x):
+        """
+        x: batch channel h w 
+        """
+        b,c,h,w = x.shape
+        curDev = 'cuda' if x.is_cuda else 'cpu'
+        # Add positional encoding, translate into memory language
+        posEncoding = self.buildPositionalEncoding(h, w, curDev, dtype=x.dtype)
+        originalTokens = h * w
+        posEncoding = posEncoding.repeat(b, 1, 1, 1)
+        origX = x.reshape(b,c,h*w).permute(0,2,1)
+        x = torch.concat([x, posEncoding], dim=1)
+        x = x.reshape(b, c+2, -1).permute(0, 2, 1) # batch h*w channel
+        x = self.nonLin(self.inputTranslationModule(x))
+
+        # Loop over memories, think
+        for lap in range(self.laps):
+            # x = torch.softmax(x, dim=2)
+            for i in range(self.lapDist):
+                selfAttention = self.selfAttentionLayers[i]
+                x, _ = selfAttention(x, x, x) #b * token * tokensize
+                x = self.nonLin(x)
+                
+        # the first i values in the current memory buffer are the "real" values that need to get output in the end
+        # pick out only the tokens that originate from the original backbone
+        # translate back into original language
+        x = torch.concat([x, origX], dim=2)
+        x = self.nonLin(self.outputTranslationModule(x))
+        x = x.reshape(b, c, h, w)
+        if torch.isnan(x).any():
+            print(f'FOUND A NAN IN X')
+        return x
+
 class MemoryModule(nn.Module):
     def __init__(self, nc, reg_max, lapDist: int=5, laps: int=1, memories: int=8, heads: int=1, dropout: float=0.05) -> None:
         """
@@ -136,7 +210,8 @@ class Detect(nn.Module):
         self.cv3 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
         self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
 
-        self.memories = nn.ModuleList([MemoryModule(self.nc, self.reg_max) for _ in range(3)])
+        self.memories = nn.ModuleList([JustTransform(self.nc, self.reg_max) for _ in range(3)])
+        # self.memories = nn.ModuleList([MemoryModule(self.nc, self.reg_max) for _ in range(3)])
 
     def forward(self, x):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
