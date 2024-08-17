@@ -170,3 +170,6 @@ pnnx*
 
 # calibration image
 calibration_*.npy
+
+*.amlignore
+*.amlignore.amltmp
