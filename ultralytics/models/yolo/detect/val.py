@@ -61,8 +61,9 @@ class DetectionValidator(BaseValidator):
             print('found a float, doing nothing')
             # pass
         else:
-            print('fall into else statement, doing .float() / 255')
+            print(f'in val.py fall into else statement, doing .float() / 255 {torch.min(batch["img"])}-{torch.max(batch["img"])}')
             batch["img"] = batch["img"].float() / 255.0
+            print(f'in val.py after doing .float() / 255 {torch.min(batch["img"])}-{torch.max(batch["img"])}. avg: {torch.mean(batch["img"])}')
 
         for k in ["batch_idx", "cls", "bboxes"]:
             batch[k] = batch[k].to(self.device)

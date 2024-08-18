@@ -67,16 +67,14 @@ class DetectionTrainer(BaseTrainer):
 
     def preprocess_batch(self, batch):
         """Preprocesses a batch of images by scaling and converting to float."""
-        print(f'start of preprocess batch in train.py, batch dtype is: {batch["img"].dtype}')
         if (
             batch["img"].dtype == torch.float32
             or batch["img"].dtype == torch.float64
             or batch["img"].dtype == torch.float16
         ):  # already a float
-            print('found a float')
+            print(f'found a float {torch.min(batch["img"])}-{torch.max(batch["img"])}. avg: {torch.mean(batch["img"])}')
             batch["img"] = batch["img"].to(self.device, non_blocking=True)
         else:
-            print('found a int')
             batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
         if self.args.multi_scale:
             imgs = batch["img"]
