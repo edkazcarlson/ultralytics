@@ -67,13 +67,16 @@ class DetectionTrainer(BaseTrainer):
 
     def preprocess_batch(self, batch):
         """Preprocesses a batch of images by scaling and converting to float."""
+        print(f'start of preprocess batch in train.py, batch dtype is: {batch["img"].dtype}')
         if (
             batch["img"].dtype == torch.float32
             or batch["img"].dtype == torch.float64
             or batch["img"].dtype == torch.float16
         ):  # already a float
+            print('found a float')
             batch["img"] = batch["img"].to(self.device, non_blocking=True)
         else:
+            print('found a int')
             batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
         if self.args.multi_scale:
             imgs = batch["img"]
@@ -116,7 +119,7 @@ class DetectionTrainer(BaseTrainer):
             save_dir=self.save_dir,
             args=copy(self.args),
             _callbacks=self.callbacks,
-            input_Ch=self.input_Ch,
+            input_Ch=self.input_Ch
         )
 
     def label_loss_items(self, loss_items=None, prefix="train"):

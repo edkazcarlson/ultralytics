@@ -49,6 +49,7 @@ class DetectionValidator(BaseValidator):
 
     def preprocess(self, batch):
         """Preprocesses batch of images for YOLO training."""
+        print(f'start of preprocess batch in val.py, batch dtype is: {batch["img"].dtype}. self.args.half = {self.args.half}')
         batch["img"] = batch["img"].to(self.device, non_blocking=True)
         if self.args.half:
             batch["img"] = batch["img"].half()
@@ -57,8 +58,10 @@ class DetectionValidator(BaseValidator):
             or batch["img"].dtype == torch.float64
             or batch["img"].dtype == torch.float16
         ):  # already a float
-            pass
+            print('found a float, doing nothing')
+            # pass
         else:
+            print('fall into else statement, doing .float() / 255')
             batch["img"] = batch["img"].float() / 255.0
 
         for k in ["batch_idx", "cls", "bboxes"]:
