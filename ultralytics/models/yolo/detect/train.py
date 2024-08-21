@@ -67,14 +67,11 @@ class DetectionTrainer(BaseTrainer):
 
     def preprocess_batch(self, batch):
         """Preprocesses a batch of images by scaling and converting to float."""
-        if (
-            batch["img"].dtype == torch.float32
-            or batch["img"].dtype == torch.float64
-            or batch["img"].dtype == torch.float16
-        ):  # already a float
-            batch["img"] = batch["img"].to(self.device, non_blocking=True)
-        else:
-            batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
+        origdType = batch['img'].dtype
+        batch["img"] = batch["img"].to(self.device, non_blocking=True, dtype = torch.float32)
+        if origdType != torch.float32 and origdType != torch.float16 and origdType != torch.float64:
+            batch["img"] /= 255
+
         if self.args.multi_scale:
             imgs = batch["img"]
             sz = (
@@ -89,8 +86,9 @@ class DetectionTrainer(BaseTrainer):
                 ]  # new shape (stretched to gs-multiple)
                 imgs = nn.functional.interpolate(imgs, size=ns, mode="bilinear", align_corners=False)
             batch["img"] = imgs
-        return batch
 
+        return batch
+    
     def set_model_attributes(self):
         """Nl = de_parallel(self.model).model[-1].nl  # number of detection layers (to scale hyps)."""
         # self.args.box *= 3 / nl  # scale to layers
@@ -116,7 +114,7 @@ class DetectionTrainer(BaseTrainer):
             save_dir=self.save_dir,
             args=copy(self.args),
             _callbacks=self.callbacks,
-            input_Ch=self.input_Ch,
+            input_Ch=self.input_Ch
         )
 
     def label_loss_items(self, loss_items=None, prefix="train"):

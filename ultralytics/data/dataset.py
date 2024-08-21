@@ -424,7 +424,6 @@ class ClassificationDataset:
         root,
         args,
         augment=False,
-        cache=False,
         prefix="",
         override_label_tranforms=None,
         append_label_transforms=None,
