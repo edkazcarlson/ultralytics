@@ -49,21 +49,9 @@ class DetectionValidator(BaseValidator):
 
     def preprocess(self, batch):
         """Preprocesses batch of images for YOLO training."""
-        print(f'start of preprocess batch in val.py, batch dtype is: {batch["img"].dtype}. self.args.half = {self.args.half}')
-        batch["img"] = batch["img"].to(self.device, non_blocking=True)
-        if self.args.half:
-            print(f'in val.py it self.args.half, before doing .half() {torch.min(batch["img"])}-{torch.max(batch["img"])}')
-            batch["img"] = batch["img"].half()
-            print(f'in val.py after doing .half {torch.min(batch["img"])}-{torch.max(batch["img"])}. avg: {torch.mean(batch["img"])}')
-        elif (
-            batch["img"].dtype == torch.float32
-            or batch["img"].dtype == torch.float64
-            or batch["img"].dtype == torch.float16
-        ):  # already a float
-            pass
-        else:
-            batch["img"] = batch["img"].float() / 255.0
-
+        desiredDtype = torch.half if self.args.half else torch.float32
+        batch["img"] = batch["img"].to(self.device, non_blocking=True, dtype = desiredDtype) / 255
+        # batch["img"] = (batch["img"].half() if self.args.half else batch["img"].float()) / 255
         for k in ["batch_idx", "cls", "bboxes"]:
             batch[k] = batch[k].to(self.device)
 
@@ -77,6 +65,34 @@ class DetectionValidator(BaseValidator):
             ]
 
         return batch
+        # print(f'start of preprocess batch in val.py, batch dtype is: {batch["img"].dtype}. self.args.half = {self.args.half}')
+        # batch["img"] = batch["img"].to(self.device, non_blocking=True)
+        # if self.args.half:
+        #     print(f'in val.py it self.args.half, before doing .half() {torch.min(batch["img"])}-{torch.max(batch["img"])}')
+        #     batch["img"] = batch["img"].half()
+        #     print(f'in val.py after doing .half {torch.min(batch["img"])}-{torch.max(batch["img"])}. avg: {torch.mean(batch["img"])}')
+        # elif (
+        #     batch["img"].dtype == torch.float32
+        #     or batch["img"].dtype == torch.float64
+        #     or batch["img"].dtype == torch.float16
+        # ):  # already a float
+        #     pass
+        # else:
+        #     batch["img"] = batch["img"].float() / 255.0
+
+        # for k in ["batch_idx", "cls", "bboxes"]:
+        #     batch[k] = batch[k].to(self.device)
+
+        # if self.args.save_hybrid:
+        #     height, width = batch["img"].shape[2:]
+        #     nb = len(batch["img"])
+        #     bboxes = batch["bboxes"] * torch.tensor((width, height, width, height), device=self.device)
+        #     self.lb = [
+        #         torch.cat([batch["cls"][batch["batch_idx"] == i], bboxes[batch["batch_idx"] == i]], dim=-1)
+        #         for i in range(nb)
+        #     ]
+
+        # return batch
 
     def init_metrics(self, model):
         """Initialize evaluation metrics for YOLO."""
