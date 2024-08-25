@@ -244,6 +244,30 @@ class C2f(nn.Module):
         y = list(self.cv1(x).split((self.c, self.c), 1))
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
+    
+class SplitC2f(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):
+        """Initialize CSP bottleneck layer with two convolutions with arguments ch_in, ch_out, number, shortcut, groups,
+        expansion.
+        """
+        super().__init__()
+        c1 = int(c1 / 2)
+        c2 = int(c2 / 2)
+        self.c2f1 = C2f(c1, c2, n, shortcut, g, e)
+        self.c2f2 = C2f(c1, c2, n, shortcut, g, e)
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        shapes = x[:,0:self.c]
+        text = x[:,self.c:]
+        shapes = self.c2f1(shapes)
+        text = self.c2f2(text)
+        output = torch.cat([shapes, text], dim=1)
+        return output
+
+    def forward_split(self, x):
+        """Forward pass using split() instead of chunk()."""
+        return self.forward(x)
 
 
 class C3(nn.Module):
