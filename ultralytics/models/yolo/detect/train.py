@@ -68,7 +68,8 @@ class DetectionTrainer(BaseTrainer):
     def preprocess_batch(self, batch):
         """Preprocesses a batch of images by scaling and converting to float."""
         origdType = batch['img'].dtype
-        batch["img"] = batch["img"].to(self.device, non_blocking=True, dtype = torch.float32)
+        batch["img"] = batch["img"].to(self.device, dtype = torch.float32)
+        # batch["img"] = batch["img"].to(self.device, non_blocking=True, dtype = torch.float32)
         if origdType != torch.float32 and origdType != torch.float16 and origdType != torch.float64:
             batch["img"] /= 255
 
