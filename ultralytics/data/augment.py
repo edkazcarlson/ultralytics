@@ -1045,21 +1045,24 @@ class RandomPerspective:
 
         # Perspective
         P = np.eye(3, dtype=np.float32)
-        P[2, 0] = random.uniform(-self.perspective, self.perspective)  # x perspective (about y)
-        P[2, 1] = random.uniform(-self.perspective, self.perspective)  # y perspective (about x)
+        if self.perspective != 0:
+            P[2, 0] = random.uniform(-self.perspective, self.perspective)  # x perspective (about y)
+            P[2, 1] = random.uniform(-self.perspective, self.perspective)  # y perspective (about x)
 
         # Rotation and Scale
         R = np.eye(3, dtype=np.float32)
-        a = random.uniform(-self.degrees, self.degrees)
-        # a += random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
-        s = random.uniform(1 - self.scale, 1 + self.scale)
-        # s = 2 ** random.uniform(-scale, scale)
-        R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
+        if self.degrees != 0:
+            a = random.uniform(-self.degrees, self.degrees)
+            # a += random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
+            s = random.uniform(1 - self.scale, 1 + self.scale)
+            # s = 2 ** random.uniform(-scale, scale)
+            R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
 
         # Shear
         S = np.eye(3, dtype=np.float32)
-        S[0, 1] = math.tan(random.uniform(-self.shear, self.shear) * math.pi / 180)  # x shear (deg)
-        S[1, 0] = math.tan(random.uniform(-self.shear, self.shear) * math.pi / 180)  # y shear (deg)
+        if self.shear != 0:
+            S[0, 1] = math.tan(random.uniform(-self.shear, self.shear) * math.pi / 180)  # x shear (deg)
+            S[1, 0] = math.tan(random.uniform(-self.shear, self.shear) * math.pi / 180)  # y shear (deg)
 
         # Translation
         T = np.eye(3, dtype=np.float32)

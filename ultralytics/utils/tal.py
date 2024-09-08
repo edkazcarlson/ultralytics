@@ -62,11 +62,11 @@ class TaskAlignedAssigner(nn.Module):
         if self.n_max_boxes == 0:
             device = gt_bboxes.device
             return (
-                torch.full_like(pd_scores[..., 0], self.bg_idx).to(device),
-                torch.zeros_like(pd_bboxes).to(device),
-                torch.zeros_like(pd_scores).to(device),
-                torch.zeros_like(pd_scores[..., 0]).to(device),
-                torch.zeros_like(pd_scores[..., 0]).to(device),
+                torch.full_like(pd_scores[..., 0], self.bg_idx, device=device),
+                torch.zeros_like(pd_bboxes, device=device),
+                torch.zeros_like(pd_scores, device = device),
+                torch.zeros_like(pd_scores[..., 0], device = device),
+                torch.zeros_like(pd_scores[..., 0], device = device),
             )
 
         mask_pos, align_metric, overlaps = self.get_pos_mask(
