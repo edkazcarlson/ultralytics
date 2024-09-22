@@ -1051,10 +1051,10 @@ class RandomPerspective:
 
         # Rotation and Scale
         R = np.eye(3, dtype=np.float32)
+        s = random.uniform(1 - self.scale, 1 + self.scale)
         if self.degrees != 0:
             a = random.uniform(-self.degrees, self.degrees)
             # a += random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
-            s = random.uniform(1 - self.scale, 1 + self.scale)
             # s = 2 ** random.uniform(-scale, scale)
             R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
 
