@@ -1460,11 +1460,12 @@ class RandomFlip:
         h = 1 if instances.normalized else h
         w = 1 if instances.normalized else w
 
+        flipValue = random.random()
         # Flip up-down
-        if self.direction == "vertical" and random.random() < self.p:
+        if self.direction == "vertical" and flipValue < self.p:
             img = np.flipud(img)
             instances.flipud(h)
-        if self.direction == "horizontal" and random.random() < self.p:
+        if self.direction == "horizontal" and flipValue < self.p:
             img = np.fliplr(img)
             instances.fliplr(w)
             # For keypoints
@@ -1903,6 +1904,40 @@ class Albumentations:
 
         return labels
 
+class ChannelFlipper:
+    """
+    A class for flipping the order of the input channels based on the BGR config variable.
+    Args:
+        p (float): The probability of flipping the color channels
+    """
+    def __init__(self, p=0):
+        self.flipChance = p
+
+    def __call__(self, labels):
+        """
+        This function performs the following operations:
+        Optionally flips the color channels from RGB to BGR.
+
+        Args:
+            (Dict): A dictionary with formatted data, including:
+                - 'img': Formatted image tensor.
+                - 'cls': Class labels tensor.
+                - 'bboxes': Bounding boxes tensor in the specified format.
+                - 'masks': Instance masks tensor (if return_mask is True).
+                - 'keypoints': Keypoints tensor (if return_keypoint is True).
+                - 'batch_idx': Batch index tensor (if batch_idx is True).
+        Returns:
+            (Dict): A dictionary with formatted data, including:
+                - 'img': Formatted image tensor with a chance of the channel order being flipped.
+                - 'cls': Class labels tensor.
+                - 'bboxes': Bounding boxes tensor in the specified format.
+                - 'masks': Instance masks tensor (if return_mask is True).
+                - 'keypoints': Keypoints tensor (if return_keypoint is True).
+                - 'batch_idx': Batch index tensor (if batch_idx is True).
+        """
+        if random.uniform(0, 1) > self.flipChance:
+            labels["img"] = labels["img"][::-1]
+        return labels
 
 class Format:
     """
@@ -1919,7 +1954,6 @@ class Format:
         mask_ratio (int): Downsample ratio for masks.
         mask_overlap (bool): Whether to overlap masks.
         batch_idx (bool): Whether to keep batch indexes.
-        bgr (float): The probability to return BGR images.
 
     Methods:
         __call__: Formats labels dictionary with image, classes, bounding boxes, and optionally masks and keypoints.
@@ -1944,7 +1978,6 @@ class Format:
         mask_ratio=4,
         mask_overlap=True,
         batch_idx=True,
-        bgr=0.0,
     ):
         """
         Initializes the Format class with given parameters for image and instance annotation formatting.
@@ -1987,7 +2020,6 @@ class Format:
         self.mask_ratio = mask_ratio
         self.mask_overlap = mask_overlap
         self.batch_idx = batch_idx  # keep the batch indexes
-        self.bgr = bgr
 
     def __call__(self, labels):
         """
@@ -2083,7 +2115,7 @@ class Format:
         if len(img.shape) < 3:
             img = np.expand_dims(img, -1)
         img = img.transpose(2, 0, 1)
-        img = np.ascontiguousarray(img[::-1] if random.uniform(0, 1) > self.bgr else img)
+        img = np.ascontiguousarray(img)
         img = torch.from_numpy(img)
         return img
 
