@@ -1904,14 +1904,14 @@ class Albumentations:
 
         return labels
 
-class ChannelFlipper:
+class BGRFlipper:
     """
     A class for flipping the order of the input channels based on the BGR config variable.
     Args:
-        p (float): The probability of flipping the color channels
+        bgr (float): Probability of returning BGR images instead of RGB.
     """
-    def __init__(self, p=0):
-        self.flipChance = p
+    def __init__(self, bgr=0):
+        self.bgr = bgr
 
     def __call__(self, labels):
         """
@@ -1935,7 +1935,7 @@ class ChannelFlipper:
                 - 'keypoints': Keypoints tensor (if return_keypoint is True).
                 - 'batch_idx': Batch index tensor (if batch_idx is True).
         """
-        if random.uniform(0, 1) > self.flipChance:
+        if random.uniform(0, 1) > self.bgr:
             labels["img"] = labels["img"][::-1]
         return labels
 
@@ -1994,7 +1994,6 @@ class Format:
             mask_ratio (int): Downsample ratio for masks.
             mask_overlap (bool): If True, allows mask overlap.
             batch_idx (bool): If True, keeps batch indexes.
-            bgr (float): Probability of returning BGR images instead of RGB.
 
         Attributes:
             bbox_format (str): Format for bounding boxes.
@@ -2005,7 +2004,6 @@ class Format:
             mask_ratio (int): Downsample ratio for masks.
             mask_overlap (bool): Whether masks can overlap.
             batch_idx (bool): Whether to keep batch indexes.
-            bgr (float): The probability to return BGR images.
 
         Examples:
             >>> format = Format(bbox_format="xyxy", return_mask=True, return_keypoint=False)
@@ -2095,9 +2093,8 @@ class Format:
         This function performs the following operations:
         1. Ensures the image has 3 dimensions (adds a channel dimension if needed).
         2. Transposes the image from HWC to CHW format.
-        3. Optionally flips the color channels from RGB to BGR.
-        4. Converts the image to a contiguous array.
-        5. Converts the Numpy array to a PyTorch tensor.
+        3. Converts the image to a contiguous array.
+        4. Converts the Numpy array to a PyTorch tensor.
 
         Args:
             img (np.ndarray): Input image as a Numpy array with shape (H, W, C) or (H, W).

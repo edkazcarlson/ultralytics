@@ -20,7 +20,7 @@ from ultralytics.utils.torch_utils import TORCHVISION_0_18
 from .augment import (
     Compose,
     Format,
-    ChannelFlipper,
+    BGRFlipper,
     Instances,
     LetterBox,
     RandomLoadText,
@@ -195,7 +195,7 @@ class YOLODataset(BaseDataset):
         )
         bgr = hyp.bgr if self.augment else 0.0
         if bgr != 0:
-            transforms.append(ChannelFlipper(p=bgr)) # only affect training.
+            transforms.append(BGRFlipper(bgr=bgr)) # only affect training.
         return transforms
 
     def close_mosaic(self, hyp):
