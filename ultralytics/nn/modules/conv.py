@@ -50,13 +50,41 @@ class Conv(nn.Module):
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
         """Initialize Conv layer with given arguments including activation."""
         super().__init__()
-        self.conv = nn.Conv2d(c1, c2/2 , k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
-        self.bn = nn.BatchNorm2d(c2)
+        self.conv = nn.Conv2d(c1, int(c2/2) , k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        self.bn = nn.BatchNorm2d(int(c2/2))
         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
 
     def forward(self, x):
         """Apply convolution, batch normalization and activation to input tensor."""
         return self.act(self.bn(self.conv(x)))
+
+    def forward_fuse(self, x):
+        """Perform transposed convolution of 2D data."""
+        return self.act(self.conv(x))
+    
+class HighPassConv(nn.Module):
+    """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
+
+    default_act = CRelu()  # default activation
+    # default_act = nn.SiLU()  # default activation
+    lowPToCut = 0.1
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+        """Initialize Conv layer with given arguments including activation."""
+        super().__init__()
+        self.conv = nn.Conv2d(c1, int(c2/2) , k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        self.bn = nn.BatchNorm2d(int(c2/2))
+        self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+        self.channelsToCut = int(int(c2/2) * self.lowPToCut)
+
+    def forward(self, x):
+        """Apply convolution, batch normalization and activation to input tensor."""
+        x = self.act(self.bn(self.conv(x)))
+        if self.channelsToCut != 0:
+            x =  x.permute(0, 2, 3, 1)
+            lowestChannel = torch.argmin(x, dim = 3)
+            x[lowestChannel] = 0
+        return x
 
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
