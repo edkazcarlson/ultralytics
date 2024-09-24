@@ -6,6 +6,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as functional
 
 __all__ = (
     "Conv",
@@ -23,6 +24,13 @@ __all__ = (
     "RepConv",
 )
 
+class CRelu(nn.Module):
+    """CRelu activation function."""
+    
+    def forward(self, x):
+        """Apply CRelu activation function to input tensor."""
+        return functional.relu(torch.cat([x, -1*x], 1))
+
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     """Pad to 'same' shape outputs."""
@@ -36,12 +44,13 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
 class Conv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
 
-    default_act = nn.SiLU()  # default activation
+    default_act = CRelu()  # default activation
+    # default_act = nn.SiLU()  # default activation
 
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
         """Initialize Conv layer with given arguments including activation."""
         super().__init__()
-        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        self.conv = nn.Conv2d(c1, c2/2 , k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
         self.bn = nn.BatchNorm2d(c2)
         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
 
@@ -56,7 +65,8 @@ class Conv(nn.Module):
 class SplitConv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
 
-    default_act = nn.SiLU()  # default activation
+    default_act = CRelu()  # default activation
+    # default_act = nn.SiLU()  # default activation
 
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
         """Initialize Conv layer with given arguments including activation."""
