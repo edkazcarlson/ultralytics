@@ -114,18 +114,21 @@ class HighPassConv(nn.Module):
 class SplitConv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
 
-    # default_act = CRelu()  # default activation
-    default_act = nn.SiLU()  # default activation
-
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True, activation = None):
         """Initialize Conv layer with given arguments including activation."""
         super().__init__()
+        print(f'type(activation): {type(activation)}')
         self.c = int(c1/2)
-        self.c2 = int(c2/2)
+        if activation is not None and type(activation) == type(CRelu()):
+            self.c2 = int(c2/4)            
+        else:
+            self.c2 = int(c2/2)
         self.conv = nn.Conv2d(self.c, self.c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
         self.conv2 = nn.Conv2d(self.c, self.c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
         self.bn = nn.BatchNorm2d(self.c2)
         self.bn2 = nn.BatchNorm2d(self.c2)
+
+        self.default_act = nn.SiLU() if activation is None else activation  # default activation
         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
 
     def forward(self, x):

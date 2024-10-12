@@ -54,6 +54,7 @@ from .block import (
     RepVGGDW,
     ResNetLayer,
     SCDown,
+    CustomStart
 )
 from .conv import (
     CBAM,

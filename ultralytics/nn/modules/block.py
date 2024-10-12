@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from ultralytics.utils.torch_utils import fuse_conv_and_bn
 
-from .conv import Conv, DWConv, GhostConv, LightConv, RepConv, autopad
+from .conv import Conv, DWConv, GhostConv, LightConv, RepConv, autopad, SplitConv, CRelu
 from .transformer import TransformerBlock
 
 __all__ = (
@@ -48,6 +48,23 @@ __all__ = (
     "SCDown",
 )
 
+class CustomStart(nn.Module):
+    def __init__(self, c1, outputChs, k=1, s=1, p=None, g=1, d=1, act=True, freqBands = 2):
+        super().__init__()
+        self.outputChs = outputChs
+        self.splitConv1 = SplitConv(c1, outputChs, k, s, p, g, d, act, activation=CRelu())
+        self.splitConv2 = SplitConv(outputChs + c1, outputChs, k, s, p, g, d, act)
+        self.freqBandChs = c1 // freqBands
+        
+    def forward(self, x):
+        x1 = self.splitConv1(x)
+        firstHalf = F.interpolate(x[:, :self.freqBandChs, :, :], size=(x1.shape[2], x1.shape[3]), mode='bilinear', align_corners=False)
+        secondHalf = F.interpolate(x[:, self.freqBandChs:, :, :], size=(x1.shape[2], x1.shape[3]), mode='bilinear', align_corners=False)
+        # assert x1.shape[1] == self.outputChs
+        x1 = torch.cat([firstHalf, x1], dim=1)
+        x1 = torch.cat([x1, secondHalf], dim=1)
+        x2 = self.splitConv2(x1)
+        return x2
 
 class DFL(nn.Module):
     """
