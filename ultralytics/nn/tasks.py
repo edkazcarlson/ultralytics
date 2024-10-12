@@ -34,6 +34,7 @@ from ultralytics.nn.modules import (
     Classify,
     Concat,
     Conv,
+    FirstConv,
     Conv2,
     ConvTranspose,
     Detect,
@@ -193,7 +194,7 @@ class BaseModel(nn.Module):
         """
         if not self.is_fused():
             for m in self.model.modules():
-                if isinstance(m, (Conv, Conv2, DWConv)) and hasattr(m, "bn"):
+                if isinstance(m, (Conv, Conv2, DWConv, FirstConv)) and hasattr(m, "bn"):
                     if isinstance(m, Conv2):
                         m.fuse_convs()
                     m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
@@ -913,6 +914,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         if m in {
             Classify,
             Conv,
+            FirstConv,
             ConvTranspose,
             GhostConv,
             Bottleneck,

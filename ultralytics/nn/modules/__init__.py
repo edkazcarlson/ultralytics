@@ -60,6 +60,7 @@ from .conv import (
     ChannelAttention,
     Concat,
     Conv,
+    FirstConv,
     Conv2,
     ConvTranspose,
     DWConv,
