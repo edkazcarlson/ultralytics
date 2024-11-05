@@ -9,6 +9,8 @@ from ultralytics.utils.torch_utils import fuse_conv_and_bn
 
 from .conv import Conv, DWConv, GhostConv, LightConv, RepConv, autopad, SplitConv, CRelu
 from .transformer import TransformerBlock
+import numpy as np
+import cv2
 
 __all__ = (
     "DFL",
@@ -49,17 +51,73 @@ __all__ = (
 )
 
 class CustomStart(nn.Module):
-    def __init__(self, c1, outputChs, k=1, s=1, p=None, g=1, d=1, act=True, freqBands = 2):
+    freqBandsToCover = 2/3
+    blurKernelFactor = 1/5
+
+    def __init__(self, c1, outputChs, k=1, s=1, p=None, g=1, d=1, act=True):
         super().__init__()
         self.outputChs = outputChs
         self.splitConv1 = SplitConv(c1, outputChs, k, s, p, g, d, act, activation=CRelu())
         self.splitConv2 = SplitConv(outputChs + c1, outputChs, k, s, p, g, d, act)
-        self.freqBandChs = c1 // freqBands
         
+    def imageSplitter(self, img):
+        '''
+        Img: b x c x h w 
+        Output: b x 2c x h x w where it's split 
+        '''
+        hSize = img.shape[2]
+        wSize = img.shape[3]
+        dft = torch.fft.fft2(img)
+
+        mask = np.zeros((hSize, wSize, 1))
+        radius = int(self.freqBandsToCover * min(hSize, wSize)/2)  # cover the most fundamental 2/3 of bands
+        print(f'radius: {radius}')
+        blurKernel = int(radius * self.blurKernelFactor)
+        if blurKernel % 2 == 0 :
+            blurKernel += 1
+        print(f'blurKernel: {blurKernel}')
+        cy = mask.shape[0] // 2
+        cx = mask.shape[1] // 2
+        cv2.circle(mask, (cx,cy), radius, (1,1,1), -1)
+        print(f'mask.max(): {mask.max()}')
+        print(f'mask.min(): {mask.min()}')
+
+        # blur the mask
+        mask = torch.tensor(cv2.GaussianBlur(mask, (blurKernel, blurKernel), 0)).reshape(1, hSize, wSize)
+        print(mask.min())
+        inverseMask = torch.tensor(np.abs(1 - mask)).reshape(1, hSize, wSize)
+
+        # apply shift of origin to center of image
+        dft_shift = torch.fft.fftshift(dft)
+
+        # apply mask to dft_shift
+        mask_expanded = mask.expand_as(dft_shift)
+        dft_shift_masked = torch.multiply(dft_shift, mask_expanded)
+
+        inverseMaskExpaned = inverseMask.expand_as(dft_shift)
+        dft_shift_maskedInv = torch.multiply(dft_shift, inverseMaskExpaned)
+
+        back_ishift_masked = torch.fft.ifftshift(dft_shift_masked)
+        back_ishift_maskedInv = torch.fft.ifftshift(dft_shift_maskedInv)
+
+        img_filtered = torch.fft.ifft2(back_ishift_masked)
+        img_filteredInv = torch.fft.ifft2(back_ishift_maskedInv)
+        # combine complex real and imaginary components to form (the magnitude for) the original image again
+
+        img_filtered = torch.abs(img_filtered)*255 #.clip(0,255).to(torch.uint8)
+        img_filteredInv = torch.abs(img_filteredInv)*255 #.clip(0,255).to(torch.uint8) 
+        img_filtered = img_filtered.clip(0,255).to(torch.uint8)
+        img_filteredInv = img_filteredInv.clip(0,255).to(torch.uint8)
+
+        splitImg = torch.concat([img_filtered, img_filteredInv], dim = 1)
+
+        return splitImg
+
     def forward(self, x):
+        x = self.splitImg(x)
         x1 = self.splitConv1(x)
-        firstHalf = F.interpolate(x[:, :self.freqBandChs, :, :], size=(x1.shape[2], x1.shape[3]), mode='bilinear', align_corners=False)
-        secondHalf = F.interpolate(x[:, self.freqBandChs:, :, :], size=(x1.shape[2], x1.shape[3]), mode='bilinear', align_corners=False)
+        firstHalf = F.interpolate(x[:, 0:3, :, :], size=(x1.shape[2], x1.shape[3]), mode='bilinear', align_corners=False)
+        secondHalf = F.interpolate(x[:, 3:, :, :], size=(x1.shape[2], x1.shape[3]), mode='bilinear', align_corners=False)
         # assert x1.shape[1] == self.outputChs
         x1 = torch.cat([firstHalf, x1], dim=1)
         x1 = torch.cat([x1, secondHalf], dim=1)
