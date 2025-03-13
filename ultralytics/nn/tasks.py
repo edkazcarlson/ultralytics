@@ -4,8 +4,11 @@ import contextlib
 from copy import deepcopy
 from pathlib import Path
 
+import numpy as np
+import os
 import torch
 import torch.nn as nn
+import traceback
 
 from ultralytics.nn.modules import (
     AIFI,
@@ -88,6 +91,7 @@ class BaseModel(nn.Module):
     """The BaseModel class serves as a base class for all the models in the Ultralytics YOLO family."""
 
     def forward(self, x, *args, **kwargs):
+        print('hit forward')
         """
         Perform forward pass of the model for either training or inference.
 
@@ -105,7 +109,7 @@ class BaseModel(nn.Module):
             return self.loss(x, *args, **kwargs)
         return self.predict(x, *args, **kwargs)
 
-    def predict(self, x, profile=False, visualize=False, augment=False, embed=None):
+    def predict(self, x, profile=False, visualize=False, augment=False, embed=None, origPath=None):
         """
         Perform a forward pass through the network.
 
@@ -121,9 +125,11 @@ class BaseModel(nn.Module):
         """
         if augment:
             return self._predict_augment(x)
-        return self._predict_once(x, profile, visualize, embed)
+        return self._predict_once(x, profile, visualize, embed, origPath)
 
-    def _predict_once(self, x, profile=False, visualize=False, embed=None):
+    def _predict_once(self, x, profile=False, visualize=False, embed=None, origPath=None):
+        print(f'_predict_once: {origPath}')
+        # traceback.print_stack()
         """
         Perform a forward pass through the network.
 
@@ -137,6 +143,8 @@ class BaseModel(nn.Module):
             (torch.Tensor): The last output of the model.
         """
         y, dt, embeddings = [], [], []  # outputs
+        saved = []
+        c = 0  # init count
         for m in self.model:
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
@@ -144,12 +152,17 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
+            print(m)
+            # if not isinstance(x, tuple):
+            #     np.save(os.path.join('layers', str(c), f'{origPath}.npy'), x.cpu().detach().numpy())
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
             if embed and m.i in embed:
                 embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
                 if m.i == max(embed):
                     return torch.unbind(torch.cat(embeddings, 1), dim=0)
+            c += 1
+        
         return x
 
     def _predict_augment(self, x):

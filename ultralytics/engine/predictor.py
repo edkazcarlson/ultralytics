@@ -139,7 +139,8 @@ class BasePredictor:
             if self.args.visualize and (not self.source_type.tensor)
             else False
         )
-        return self.model(im, augment=self.args.augment, visualize=visualize, embed=self.args.embed, *args, **kwargs)
+        origPath = kwargs.pop('origPath', None)
+        return self.model(im, augment=self.args.augment, visualize=visualize, embed=self.args.embed, origPath=origPath, *args, **kwargs)
 
     def pre_transform(self, im):
         """
@@ -214,6 +215,7 @@ class BasePredictor:
     @smart_inference_mode()
     def stream_inference(self, source=None, model=None, *args, **kwargs):
         """Streams real-time inference on camera feed and saves results to file."""
+        print(f'stream inf: {kwargs}')
         if self.args.verbose:
             LOGGER.info("")
 
