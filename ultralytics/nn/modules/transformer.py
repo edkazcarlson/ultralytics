@@ -691,9 +691,6 @@ class DeformableTransformerDecoder(nn.Module):
         last_refined_bbox = None
         refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
-            print('transformer decoder layer', i)
-            print('bbox head', bbox_head[i])
-            print('score head', score_head[i])
             output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, pos_mlp(refer_bbox))
 
             bbox = bbox_head[i](output)
@@ -712,5 +709,93 @@ class DeformableTransformerDecoder(nn.Module):
 
             last_refined_bbox = refined_bbox
             refer_bbox = refined_bbox.detach() if self.training else refined_bbox
+
+        return torch.stack(dec_bboxes), torch.stack(dec_cls)
+
+
+class CustomDeformableTransformerDecoder(nn.Module):
+    """
+    Implementation of Deformable Transformer Decoder based on PaddleDetection.
+
+    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/transformers/deformable_transformer.py
+
+    Attributes:
+        layers (nn.ModuleList): List of decoder layers.
+        num_layers (int): Number of decoder layers.
+        hidden_dim (int): Hidden dimension.
+        eval_idx (int): Index of the layer to use during evaluation.
+    """
+
+    def __init__(self, hidden_dim, decoder_layer, num_layers, inner_loops=1):
+        """
+        Initialize the DeformableTransformerDecoder with the given parameters.
+
+        Args:
+            hidden_dim (int): Hidden dimension.
+            decoder_layer (nn.Module): Decoder layer module.
+            num_layers (int): Number of decoder layers.
+            eval_idx (int): Index of the layer to use during evaluation.
+        """
+        super().__init__()
+        self.layers = _get_clones(decoder_layer, num_layers)
+        self.num_layers = num_layers
+        self.hidden_dim = hidden_dim
+        self.inner_loops = inner_loops
+
+    def forward(
+        self,
+        embed,  # decoder embeddings
+        refer_bbox,  # anchor
+        feats,  # image features
+        shapes,  # feature shapes
+        bbox_head,
+        score_head,
+        pos_mlp,
+        attn_mask=None,
+        padding_mask=None,
+    ):
+        """
+        Perform the forward pass through the entire decoder.
+
+        Args:
+            embed (torch.Tensor): Decoder embeddings.
+            refer_bbox (torch.Tensor): Reference bounding boxes.
+            feats (torch.Tensor): Image features.
+            shapes (list): Feature shapes.
+            bbox_head (nn.Module): Bounding box prediction head.
+            score_head (nn.Module): Score prediction head.
+            pos_mlp (nn.Module): Position MLP.
+            attn_mask (torch.Tensor, optional): Attention mask.
+            padding_mask (torch.Tensor, optional): Padding mask.
+
+        Returns:
+            dec_bboxes (torch.Tensor): Decoded bounding boxes.
+            dec_cls (torch.Tensor): Decoded classification scores.
+        """
+        output = embed
+        dec_bboxes = []
+        dec_cls = []
+        last_refined_bbox = None
+        refer_bbox = refer_bbox.sigmoid()
+        for _ in range(self.inner_loops):
+            for i, layer in enumerate(self.layers):
+                output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, pos_mlp(refer_bbox))
+
+                bbox = bbox_head[i](output)
+                refined_bbox = torch.sigmoid(bbox + inverse_sigmoid(refer_bbox))
+
+                if self.training:
+                    dec_cls.append(score_head[i](output))
+                    if i == 0:
+                        dec_bboxes.append(refined_bbox)
+                    else:
+                        dec_bboxes.append(torch.sigmoid(bbox + inverse_sigmoid(last_refined_bbox)))
+                elif i == self.eval_idx:
+                    dec_cls.append(score_head[i](output))
+                    dec_bboxes.append(refined_bbox)
+                    break
+
+                last_refined_bbox = refined_bbox
+                refer_bbox = refined_bbox.detach() if self.training else refined_bbox
 
         return torch.stack(dec_bboxes), torch.stack(dec_cls)

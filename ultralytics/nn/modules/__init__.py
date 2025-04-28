@@ -100,6 +100,7 @@ from .transformer import (
     TransformerBlock,
     TransformerEncoderLayer,
     TransformerLayer,
+    CustomDeformableTransformerDecoder
 )
 
 __all__ = (

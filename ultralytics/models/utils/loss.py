@@ -314,6 +314,13 @@ class DETRLoss(nn.Module):
         Returns:
             (dict): Dictionary of losses.
         """
+        print('in DETRLoss._get_loss')
+        print(f'pred_bboxes.shape: {pred_bboxes.shape}')
+        print(f'pred_scores.shape: {pred_scores.shape}')
+        print(f'gt_bboxes.shape: {gt_bboxes.shape}')
+        print(f'gt_cls.shape: {gt_cls.shape}')
+        print(f'gt_groups.shape: {gt_groups.shape}')
+
         if match_indices is None:
             match_indices = self.matcher(
                 pred_bboxes, pred_scores, gt_bboxes, gt_cls, gt_groups, masks=masks, gt_mask=gt_mask
