@@ -9,7 +9,6 @@ from pathlib import Path
 
 import requests
 
-from ultralytics import __version__
 from ultralytics.utils import (
     ARGV,
     ENVIRONMENT,
@@ -23,6 +22,7 @@ from ultralytics.utils import (
     TESTS_RUNNING,
     TQDM,
     TryExcept,
+    __version__,
     colorstr,
     get_git_origin_url,
 )

@@ -10,11 +10,11 @@ References:
 """
 
 from ultralytics.engine.model import Model
-from ultralytics.nn.tasks import RTDETRDetectionModel
+from ultralytics.nn.tasks import RTDETRDetectionModel, CustomRTDETRDetectionModel
 
-from .predict import RTDETRPredictor
-from .train import RTDETRTrainer
-from .val import RTDETRValidator
+from .predict import RTDETRPredictor, CustomRTDETRPredictor
+from .train import RTDETRTrainer, CustomRTDETRTrainer
+from .val import RTDETRValidator, CustomRTDETRValidator
 
 
 class RTDETR(Model):
@@ -59,5 +59,52 @@ class RTDETR(Model):
                 "validator": RTDETRValidator,
                 "trainer": RTDETRTrainer,
                 "model": RTDETRDetectionModel,
+            }
+        }
+
+
+
+class CustomRTDETR(Model):
+    """
+    Interface for Baidu's RT-DETR model, a Vision Transformer-based real-time object detector.
+
+    This model provides real-time performance with high accuracy. It supports efficient hybrid encoding, IoU-aware query
+    selection, and adaptable inference speed.
+
+    Attributes:
+        model (str): Path to the pre-trained model.
+
+    Examples:
+        >>> from ultralytics import RTDETR
+        >>> model = RTDETR("rtdetr-l.pt")
+        >>> results = model("image.jpg")
+    """
+
+    def __init__(self, model: str = "rtdetr-l.pt") -> None:
+        """
+        Initialize the RT-DETR model with the given pre-trained model file.
+
+        Args:
+            model (str): Path to the pre-trained model. Supports .pt, .yaml, and .yml formats.
+
+        Raises:
+            NotImplementedError: If the model file extension is not 'pt', 'yaml', or 'yml'.
+        """
+        super().__init__(model=model, task="detect")
+
+    @property
+    def task_map(self) -> dict:
+        """
+        Returns a task map for RT-DETR, associating tasks with corresponding Ultralytics classes.
+
+        Returns:
+            (dict): A dictionary mapping task names to Ultralytics task classes for the RT-DETR model.
+        """
+        return {
+            "detect": {
+                "predictor": CustomRTDETRPredictor,
+                "validator": CustomRTDETRValidator,
+                "trainer": CustomRTDETRTrainer,
+                "model": CustomRTDETRDetectionModel,
             }
         }

@@ -14,9 +14,8 @@ import numpy as np
 import psutil
 from torch.utils.data import Dataset
 
-from ultralytics.data.utils import FORMATS_HELP_MSG, HELP_URL, IMG_FORMATS, check_file_speeds
+from ultralytics.data.utils import FORMATS_HELP_MSG, HELP_URL, IMG_FORMATS
 from ultralytics.utils import DEFAULT_CFG, LOCAL_RANK, LOGGER, NUM_THREADS, TQDM
-from ultralytics.utils.patches import imread
 
 
 class BaseDataset(Dataset):
@@ -33,7 +32,6 @@ class BaseDataset(Dataset):
         single_cls (bool): Whether to treat all objects as a single class.
         prefix (str): Prefix to print in log messages.
         fraction (float): Fraction of dataset to utilize.
-        cv2_flag (int): OpenCV flag for reading images.
         im_files (List[str]): List of image file paths.
         labels (List[Dict]): List of label data dictionaries.
         ni (int): Number of images in the dataset.
@@ -80,7 +78,6 @@ class BaseDataset(Dataset):
         single_cls=False,
         classes=None,
         fraction=1.0,
-        channels=3,
     ):
         """
         Initialize BaseDataset with given configuration and options.
@@ -99,7 +96,6 @@ class BaseDataset(Dataset):
             single_cls (bool, optional): If True, single class training is used.
             classes (list, optional): List of included classes.
             fraction (float, optional): Fraction of dataset to utilize.
-            channels (int, optional): Number of channels in the images (1 for grayscale, 3 for RGB).
         """
         super().__init__()
         self.img_path = img_path
@@ -108,8 +104,6 @@ class BaseDataset(Dataset):
         self.single_cls = single_cls
         self.prefix = prefix
         self.fraction = fraction
-        self.channels = channels
-        self.cv2_flag = cv2.IMREAD_GRAYSCALE if channels == 1 else cv2.IMREAD_COLOR
         self.im_files = self.get_img_files(self.img_path)
         self.labels = self.get_labels()
         self.update_labels(include_class=classes)  # single_cls and include_class
@@ -133,7 +127,7 @@ class BaseDataset(Dataset):
         if self.cache == "ram" and self.check_cache_ram():
             if hyp.deterministic:
                 LOGGER.warning(
-                    "cache='ram' may produce non-deterministic training results. "
+                    "WARNING ⚠️ cache='ram' may produce non-deterministic training results. "
                     "Consider cache='disk' as a deterministic alternative if your disk space allows."
                 )
             self.cache_images()
@@ -178,7 +172,6 @@ class BaseDataset(Dataset):
             raise FileNotFoundError(f"{self.prefix}Error loading data from {img_path}\n{HELP_URL}") from e
         if self.fraction < 1:
             im_files = im_files[: round(len(im_files) * self.fraction)]  # retain a fraction of the dataset
-        check_file_speeds(im_files, prefix=self.prefix)  # check image read speeds
         return im_files
 
     def update_labels(self, include_class: Optional[list]):
@@ -214,9 +207,9 @@ class BaseDataset(Dataset):
             rect_mode (bool, optional): Whether to use rectangular resizing.
 
         Returns:
-            (np.ndarray): Loaded image as a NumPy array.
-            (Tuple[int, int]): Original image dimensions in (height, width) format.
-            (Tuple[int, int]): Resized image dimensions in (height, width) format.
+            (np.ndarray): Loaded image.
+            (tuple): Original image dimensions (h, w).
+            (tuple): Resized image dimensions (h, w).
 
         Raises:
             FileNotFoundError: If the image file is not found.
@@ -227,11 +220,11 @@ class BaseDataset(Dataset):
                 try:
                     im = np.load(fn)
                 except Exception as e:
-                    LOGGER.warning(f"{self.prefix}Removing corrupt *.npy image file {fn} due to: {e}")
+                    LOGGER.warning(f"{self.prefix}WARNING ⚠️ Removing corrupt *.npy image file {fn} due to: {e}")
                     Path(fn).unlink(missing_ok=True)
-                    im = imread(f, flags=self.cv2_flag)  # BGR
+                    im = cv2.imread(f)  # BGR
             else:  # read image
-                im = imread(f, flags=self.cv2_flag)  # BGR
+                im = cv2.imread(f)  # BGR
             if im is None:
                 raise FileNotFoundError(f"Image Not Found {f}")
 
@@ -243,8 +236,6 @@ class BaseDataset(Dataset):
                     im = cv2.resize(im, (w, h), interpolation=cv2.INTER_LINEAR)
             elif not (h0 == w0 == self.imgsz):  # resize by stretching image to square imgsz
                 im = cv2.resize(im, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
-            if im.ndim == 2:
-                im = im[..., None]
 
             # Add to buffer if training with augmentations
             if self.augment:
@@ -279,7 +270,7 @@ class BaseDataset(Dataset):
         """Save an image as an *.npy file for faster loading."""
         f = self.npy_files[i]
         if not f.exists():
-            np.save(f.as_posix(), imread(self.im_files[i]), allow_pickle=False)
+            np.save(f.as_posix(), cv2.imread(self.im_files[i]), allow_pickle=False)
 
     def check_cache_disk(self, safety_margin=0.5):
         """
@@ -297,22 +288,22 @@ class BaseDataset(Dataset):
         n = min(self.ni, 30)  # extrapolate from 30 random images
         for _ in range(n):
             im_file = random.choice(self.im_files)
-            im = imread(im_file)
+            im = cv2.imread(im_file)
             if im is None:
                 continue
             b += im.nbytes
             if not os.access(Path(im_file).parent, os.W_OK):
                 self.cache = None
-                LOGGER.warning(f"{self.prefix}Skipping caching images to disk, directory not writeable")
+                LOGGER.info(f"{self.prefix}Skipping caching images to disk, directory not writeable ⚠️")
                 return False
         disk_required = b * self.ni / n * (1 + safety_margin)  # bytes required to cache dataset to disk
         total, used, free = shutil.disk_usage(Path(self.im_files[0]).parent)
         if disk_required > free:
             self.cache = None
-            LOGGER.warning(
+            LOGGER.info(
                 f"{self.prefix}{disk_required / gb:.1f}GB disk space required, "
                 f"with {int(safety_margin * 100)}% safety margin but only "
-                f"{free / gb:.1f}/{total / gb:.1f}GB free, not caching images to disk"
+                f"{free / gb:.1f}/{total / gb:.1f}GB free, not caching images to disk ⚠️"
             )
             return False
         return True
@@ -330,7 +321,7 @@ class BaseDataset(Dataset):
         b, gb = 0, 1 << 30  # bytes of cached images, bytes per gigabytes
         n = min(self.ni, 30)  # extrapolate from 30 random images
         for _ in range(n):
-            im = imread(random.choice(self.im_files))  # sample image
+            im = cv2.imread(random.choice(self.im_files))  # sample image
             if im is None:
                 continue
             ratio = self.imgsz / max(im.shape[0], im.shape[1])  # max(h, w)  # ratio
@@ -339,10 +330,10 @@ class BaseDataset(Dataset):
         mem = psutil.virtual_memory()
         if mem_required > mem.available:
             self.cache = None
-            LOGGER.warning(
+            LOGGER.info(
                 f"{self.prefix}{mem_required / gb:.1f}GB RAM required to cache images "
                 f"with {int(safety_margin * 100)}% safety margin but only "
-                f"{mem.available / gb:.1f}/{mem.total / gb:.1f}GB available, not caching images"
+                f"{mem.available / gb:.1f}/{mem.total / gb:.1f}GB available, not caching images ⚠️"
             )
             return False
         return True
@@ -423,17 +414,19 @@ class BaseDataset(Dataset):
         """
         Users can customize their own format here.
 
-        Examples:
+        Note:
             Ensure output is a dictionary with the following keys:
-            >>> dict(
-            ...     im_file=im_file,
-            ...     shape=shape,  # format: (height, width)
-            ...     cls=cls,
-            ...     bboxes=bboxes,  # xywh
-            ...     segments=segments,  # xy
-            ...     keypoints=keypoints,  # xy
-            ...     normalized=True,  # or False
-            ...     bbox_format="xyxy",  # or xywh, ltwh
-            ... )
+            ```python
+            dict(
+                im_file=im_file,
+                shape=shape,  # format: (height, width)
+                cls=cls,
+                bboxes=bboxes,  # xywh
+                segments=segments,  # xy
+                keypoints=keypoints,  # xy
+                normalized=True,  # or False
+                bbox_format="xyxy",  # or xywh, ltwh
+            )
+            ```
         """
         raise NotImplementedError

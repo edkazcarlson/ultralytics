@@ -73,7 +73,7 @@ class SpeedEstimator(BaseSolution):
         # Draw speed estimation region
         annotator.draw_region(reg_pts=self.region, color=(104, 0, 123), thickness=self.line_width * 2)
 
-        for box, track_id, cls, conf in zip(self.boxes, self.track_ids, self.clss, self.confs):
+        for box, track_id, cls in zip(self.boxes, self.track_ids, self.clss):
             self.store_tracking_history(track_id, box)  # Store track history
 
             # Initialize tracking data for new objects
@@ -82,11 +82,8 @@ class SpeedEstimator(BaseSolution):
             if track_id not in self.trk_pp:
                 self.trk_pp[track_id] = self.track_line[-1]
 
-            speed_label = (
-                f"{int(self.spd[track_id])} km/h"
-                if track_id in self.spd and self.show_labels
-                else self.adjust_box_label(cls, conf, track_id)
-            )
+            # Prepare label with speed if available, otherwise use class name
+            speed_label = f"{int(self.spd[track_id])} km/h" if track_id in self.spd else self.names[int(cls)]
             annotator.box_label(box, label=speed_label, color=colors(track_id, True))  # Draw bounding box
 
             # Determine if object is crossing the speed estimation region

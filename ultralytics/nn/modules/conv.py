@@ -337,7 +337,7 @@ class GhostConv(nn.Module):
         cv2 (Conv): Cheap operation convolution.
 
     References:
-        https://github.com/huawei-noah/Efficient-AI-Backbones
+        https://github.com/huawei-noah/ghostnet
     """
 
     def __init__(self, c1, c2, k=1, s=1, g=1, act=True):
@@ -447,8 +447,9 @@ class RepConv(nn.Module):
         Calculate equivalent kernel and bias by fusing convolutions.
 
         Returns:
-            (torch.Tensor): Equivalent kernel
-            (torch.Tensor): Equivalent bias
+            (tuple): Tuple containing:
+                - Equivalent kernel (torch.Tensor)
+                - Equivalent bias (torch.Tensor)
         """
         kernel3x3, bias3x3 = self._fuse_bn_tensor(self.conv1)
         kernel1x1, bias1x1 = self._fuse_bn_tensor(self.conv2)
@@ -479,8 +480,9 @@ class RepConv(nn.Module):
             branch (Conv | nn.BatchNorm2d | None): Branch to fuse.
 
         Returns:
-            (torch.Tensor): Fused kernel
-            (torch.Tensor): Fused bias
+            (tuple): Tuple containing:
+                - Fused kernel (torch.Tensor)
+                - Fused bias (torch.Tensor)
         """
         if branch is None:
             return 0, 0

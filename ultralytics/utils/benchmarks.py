@@ -120,9 +120,10 @@ def benchmark(
                 )
             if i in {5}:  # CoreML
                 assert not IS_PYTHON_3_13, "CoreML not supported on Python 3.13"
-            if i in {6, 7, 8, 9, 10}:  # TF SavedModel, TF GraphDef, and TFLite, TF EdgeTPU and TF.js
+            if i in {6, 7, 8}:  # TF SavedModel, TF GraphDef, and TFLite
                 assert not isinstance(model, YOLOWorld), "YOLOWorldv2 TensorFlow exports not supported by onnx2tf yet"
-                # assert not IS_PYTHON_MINIMUM_3_12, "TFLite exports not supported on Python>=3.12 yet"
+            if i in {9, 10}:  # TF EdgeTPU and TF.js
+                assert not isinstance(model, YOLOWorld), "YOLOWorldv2 TensorFlow exports not supported by onnx2tf yet"
             if i == 11:  # Paddle
                 assert not isinstance(model, YOLOWorld), "YOLOWorldv2 Paddle exports not supported yet"
                 assert model.task != "obb", "Paddle OBB bug https://github.com/PaddlePaddle/Paddle/issues/72024"
@@ -136,7 +137,7 @@ def benchmark(
                 assert not is_end2end
                 assert not isinstance(model, YOLOWorld), "YOLOWorldv2 IMX exports not supported"
                 assert model.task == "detect", "IMX only supported for detection task"
-                assert "C2f" in model.__str__(), "IMX only supported for YOLOv8"  # TODO: enable for YOLO11
+                assert "C2f" in model.__str__(), "IMX only supported for YOLOv8"
             if i == 15:  # RKNN
                 assert not isinstance(model, YOLOWorld), "YOLOWorldv2 RKNN exports not supported yet"
                 assert not is_end2end, "End-to-end models not supported by RKNN yet"
@@ -177,7 +178,7 @@ def benchmark(
         except Exception as e:
             if verbose:
                 assert type(e) is AssertionError, f"Benchmark failure for {name}: {e}"
-            LOGGER.error(f"Benchmark failure for {name}: {e}")
+            LOGGER.warning(f"ERROR ❌️ Benchmark failure for {name}: {e}")
             y.append([name, emoji, round(file_size(filename), 1), None, None, None])  # mAP, t_inference
 
     # Print results
@@ -273,7 +274,7 @@ class RF100Benchmark:
                     if not Path(proj_version).exists():
                         self.rf.workspace(workspace).project(project).version(version).download("yolov8")
                     else:
-                        LOGGER.info("Dataset already downloaded.")
+                        print("Dataset already downloaded.")
                     self.ds_cfg_list.append(Path.cwd() / proj_version / "data.yaml")
                 except Exception:
                     continue
@@ -335,12 +336,12 @@ class RF100Benchmark:
                 )
         map_val = 0.0
         if len(eval_lines) > 1:
-            LOGGER.info("Multiple dicts found")
+            print("There's more dicts")
             for lst in eval_lines:
                 if lst["class"] == "all":
                     map_val = lst["map50"]
         else:
-            LOGGER.info("Single dict found")
+            print("There's only one dict res")
             map_val = [res["map50"] for res in eval_lines][0]
 
         with open(eval_log_file, "a", encoding="utf-8") as f:
@@ -439,7 +440,7 @@ class ProfileModels:
         files = self.get_files()
 
         if not files:
-            LOGGER.warning("No matching *.pt or *.onnx files found.")
+            print("No matching *.pt or *.onnx files found.")
             return
 
         table_rows = []
@@ -496,7 +497,7 @@ class ProfileModels:
             else:
                 files.extend(glob.glob(str(path)))
 
-        LOGGER.info(f"Profiling: {sorted(files)}")
+        print(f"Profiling: {sorted(files)}")
         return [Path(file) for file in sorted(files)]
 
     @staticmethod
@@ -693,7 +694,7 @@ class ProfileModels:
         header = "|" + "|".join(f" {h} " for h in headers) + "|"
         separator = "|" + "|".join("-" * (len(h) + 2) for h in headers) + "|"
 
-        LOGGER.info(f"\n\n{header}")
-        LOGGER.info(separator)
+        print(f"\n\n{header}")
+        print(separator)
         for row in table_rows:
-            LOGGER.info(row)
+            print(row)

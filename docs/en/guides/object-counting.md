@@ -14,13 +14,13 @@ Object counting with [Ultralytics YOLO11](https://github.com/ultralytics/ultraly
 
 <p align="center">
   <br>
-  <iframe loading="lazy" width="720" height="405" src="https://www.youtube.com/embed/vKcD44GkSF8"
+  <iframe loading="lazy" width="720" height="405" src="https://www.youtube.com/embed/Fj9TStNBVoY"
     title="YouTube video player" frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
     allowfullscreen>
   </iframe>
   <br>
-  <strong>Watch:</strong> How to Perform Real-Time Object Counting with Ultralytics YOLO11 🍏
+  <strong>Watch:</strong> Class-wise Object Counting using Ultralytics YOLOv8
 </p>
 
 ## Advantages of Object Counting

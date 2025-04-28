@@ -2,7 +2,7 @@
 
 from .fastsam import FastSAM
 from .nas import NAS
-from .rtdetr import RTDETR
+from .rtdetr import RTDETR, CustomRTDETR
 from .sam import SAM
 from .yolo import YOLO, YOLOE, YOLOWorld
 

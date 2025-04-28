@@ -691,6 +691,9 @@ class DeformableTransformerDecoder(nn.Module):
         last_refined_bbox = None
         refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
+            print('transformer decoder layer', i)
+            print('bbox head', bbox_head[i])
+            print('score head', score_head[i])
             output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, pos_mlp(refer_bbox))
 
             bbox = bbox_head[i](output)

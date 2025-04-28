@@ -45,9 +45,6 @@ Export a YOLOv8n model to OpenVINO format and run inference with the exported mo
 
         # Run inference
         results = ov_model("https://ultralytics.com/images/bus.jpg")
-
-        # Run inference with specified device, available devices: ["intel:gpu", "intel:npu", "intel:cpu"]
-        results = ov_model("https://ultralytics.com/images/bus.jpg", device="intel:gpu")
         ```
 
     === "CLI"
@@ -58,9 +55,6 @@ Export a YOLOv8n model to OpenVINO format and run inference with the exported mo
 
         # Run inference with the exported model
         yolo predict model=yolov8n_openvino_model source='https://ultralytics.com/images/bus.jpg'
-
-        # Run inference with specified device, available devices: ["intel:gpu", "intel:npu", "intel:cpu"]
-        yolo predict model=yolov8n_openvino_model source='https://ultralytics.com/images/bus.jpg' device="intel:gpu"
         ```
 
 ## Export Arguments

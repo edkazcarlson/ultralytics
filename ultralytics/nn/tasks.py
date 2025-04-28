@@ -150,9 +150,13 @@ class BaseModel(torch.nn.Module):
         Returns:
             (torch.Tensor): The last output of the model.
         """
+        print(f'_predict_once')
         y, dt, embeddings = [], [], []  # outputs
         for m in self.model:
+            print(f'model: {m}')
             if m.f != -1:  # if not from previous layer
+                yShape = [x.shape if x != None else 'None' for x in y]
+                print(f'x is from {m.f}. yshape: {yShape}')
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
                 self._profile_one_layer(m, x, dt)
@@ -169,7 +173,7 @@ class BaseModel(torch.nn.Module):
     def _predict_augment(self, x):
         """Perform augmentations on input image x and return augmented inference."""
         LOGGER.warning(
-            f"{self.__class__.__name__} does not support 'augment=True' prediction. "
+            f"WARNING ⚠️ {self.__class__.__name__} does not support 'augment=True' prediction. "
             f"Reverting to single-scale prediction."
         )
         return self._predict_once(x)
@@ -221,8 +225,6 @@ class BaseModel(torch.nn.Module):
                 if isinstance(m, RepVGGDW):
                     m.fuse()
                     m.forward = m.forward_fuse
-                if isinstance(m, v10Detect):
-                    m.fuse()  # remove one2many head
             self.info(verbose=verbose)
 
         return self
@@ -308,7 +310,7 @@ class BaseModel(torch.nn.Module):
 class DetectionModel(BaseModel):
     """YOLO detection model."""
 
-    def __init__(self, cfg="yolo11n.yaml", ch=3, nc=None, verbose=True):
+    def __init__(self, cfg="yolo11n.yaml", ch=3, nc=None, verbose=True):  # model, input channels, number of classes
         """
         Initialize the YOLO detection model with the given config and parameters.
 
@@ -322,13 +324,13 @@ class DetectionModel(BaseModel):
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
         if self.yaml["backbone"][0][2] == "Silence":
             LOGGER.warning(
-                "YOLOv9 `Silence` module is deprecated in favor of torch.nn.Identity. "
+                "WARNING ⚠️ YOLOv9 `Silence` module is deprecated in favor of torch.nn.Identity. "
                 "Please delete local *.pt file and re-download the latest model checkpoint."
             )
             self.yaml["backbone"][0][2] = "nn.Identity"
 
         # Define model
-        self.yaml["channels"] = ch  # save channels
+        ch = self.yaml["ch"] = self.yaml.get("ch", ch)  # input channels
         if nc and nc != self.yaml["nc"]:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml["nc"] = nc  # override YAML value
@@ -372,7 +374,7 @@ class DetectionModel(BaseModel):
             (torch.Tensor): Augmented inference output.
         """
         if getattr(self, "end2end", False) or self.__class__.__name__ != "DetectionModel":
-            LOGGER.warning("Model does not support 'augment=True', reverting to single-scale prediction.")
+            LOGGER.warning("WARNING ⚠️ Model does not support 'augment=True', reverting to single-scale prediction.")
             return self._predict_once(x)
         img_size = x.shape[-2:]  # height, width
         s = [1, 0.83, 0.67]  # scales
@@ -528,7 +530,7 @@ class ClassificationModel(BaseModel):
         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
 
         # Define model
-        ch = self.yaml["channels"] = self.yaml.get("channels", ch)  # input channels
+        ch = self.yaml["ch"] = self.yaml.get("ch", ch)  # input channels
         if nc and nc != self.yaml["nc"]:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml["nc"] = nc  # override YAML value
@@ -682,6 +684,117 @@ class RTDETRDetectionModel(DetectionModel):
         head = self.model[-1]
         x = head([y[j] for j in head.f], batch)  # head inference
         return x
+    
+
+class CustomRTDETRDetectionModel(DetectionModel):
+    """
+    RTDETR (Real-time DEtection and Tracking using Transformers) Detection Model class.
+
+    This class is responsible for constructing the RTDETR architecture, defining loss functions, and facilitating both
+    the training and inference processes. RTDETR is an object detection and tracking model that extends from the
+    DetectionModel base class.
+
+    Methods:
+        init_criterion: Initializes the criterion used for loss calculation.
+        loss: Computes and returns the loss during training.
+        predict: Performs a forward pass through the network and returns the output.
+    """
+
+    def __init__(self, cfg="rtdetr-l.yaml", ch=3, nc=None, verbose=True):
+        """
+        Initialize the CustomRTDETRDetectionModel.
+
+        Args:
+            cfg (str | dict): Configuration file name or path.
+            ch (int): Number of input channels.
+            nc (int, optional): Number of classes.
+            verbose (bool): Print additional information during initialization.
+        """
+        super().__init__(cfg=cfg, ch=ch, nc=nc, verbose=verbose)
+
+    def init_criterion(self):
+        """Initialize the loss criterion for the RTDETRDetectionModel."""
+        from ultralytics.models.utils.loss import CustomRTDETRDetectionLoss
+
+        return CustomRTDETRDetectionLoss(nc=self.nc, use_vfl=True)
+
+    def loss(self, batch, preds=None):
+        """
+        Compute the loss for the given batch of data.
+
+        Args:
+            batch (dict): Dictionary containing image and label data.
+            preds (torch.Tensor, optional): Precomputed model predictions.
+
+        Returns:
+            (tuple): A tuple containing the total loss and main three losses in a tensor.
+        """
+        if not hasattr(self, "criterion"):
+            self.criterion = self.init_criterion()
+
+        img = batch["img"]
+        # NOTE: preprocess gt_bbox and gt_labels to list.
+        bs = len(img)
+        batch_idx = batch["batch_idx"]
+        gt_groups = [(batch_idx == i).sum().item() for i in range(bs)]
+        targets = {
+            "cls": batch["cls"].to(img.device, dtype=torch.long).view(-1),
+            "bboxes": batch["bboxes"].to(device=img.device),
+            "batch_idx": batch_idx.to(img.device, dtype=torch.long).view(-1),
+            "gt_groups": gt_groups,
+        }
+
+        preds = self.predict(img, batch=targets) if preds is None else preds
+        dec_bboxes, dec_scores, enc_bboxes, enc_scores, dn_meta = preds if self.training else preds[1]
+        if dn_meta is None:
+            dn_bboxes, dn_scores = None, None
+        else:
+            dn_bboxes, dec_bboxes = torch.split(dec_bboxes, dn_meta["dn_num_split"], dim=2)
+            dn_scores, dec_scores = torch.split(dec_scores, dn_meta["dn_num_split"], dim=2)
+
+        dec_bboxes = torch.cat([enc_bboxes.unsqueeze(0), dec_bboxes])  # (7, bs, 300, 4)
+        dec_scores = torch.cat([enc_scores.unsqueeze(0), dec_scores])
+
+        loss = self.criterion(
+            (dec_bboxes, dec_scores), targets, dn_bboxes=dn_bboxes, dn_scores=dn_scores, dn_meta=dn_meta
+        )
+        # NOTE: There are like 12 losses in RTDETR, backward with all losses but only show the main three losses.
+        return sum(loss.values()), torch.as_tensor(
+            [loss[k].detach() for k in ["loss_giou", "loss_class", "loss_bbox"]], device=img.device
+        )
+
+    def predict(self, x, profile=False, visualize=False, batch=None, augment=False, embed=None):
+        """
+        Perform a forward pass through the model.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+            profile (bool): If True, profile the computation time for each layer.
+            visualize (bool): If True, save feature maps for visualization.
+            batch (dict, optional): Ground truth data for evaluation.
+            augment (bool): If True, perform data augmentation during inference.
+            embed (list, optional): A list of feature vectors/embeddings to return.
+
+        Returns:
+            (torch.Tensor): Model's output tensor.
+        """
+        y, dt, embeddings = [], [], []  # outputs
+        for m in self.model[:-1]:  # except the head part
+            if m.f != -1:  # if not from previous layer
+                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+            if profile:
+                self._profile_one_layer(m, x, dt)
+            x = m(x)  # run
+            y.append(x if m.i in self.save else None)  # save output
+            if visualize:
+                feature_visualization(x, m.type, m.i, save_dir=visualize)
+            if embed and m.i in embed:
+                embeddings.append(torch.nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
+                if m.i == max(embed):
+                    return torch.unbind(torch.cat(embeddings, 1), dim=0)
+        head = self.model[-1]
+        x = head([y[j] for j in head.f], batch)  # head inference
+        return x    
 
 
 class WorldModel(DetectionModel):
@@ -1222,7 +1335,7 @@ def torch_safe_load(weight, safe_only=False):
                 )
             ) from e
         LOGGER.warning(
-            f"{weight} appears to require '{e.name}', which is not in Ultralytics requirements."
+            f"WARNING ⚠️ {weight} appears to require '{e.name}', which is not in Ultralytics requirements."
             f"\nAutoInstall will run now for '{e.name}' but this feature will be removed in the future."
             f"\nRecommend fixes are to train a new model using the latest 'ultralytics' package or to "
             f"run a command with an official Ultralytics model, i.e. 'yolo predict model=yolo11n.pt'"
@@ -1233,7 +1346,7 @@ def torch_safe_load(weight, safe_only=False):
     if not isinstance(ckpt, dict):
         # File is likely a YOLO instance saved with i.e. torch.save(model, "saved_model.pt")
         LOGGER.warning(
-            f"The file '{weight}' appears to be improperly saved or formatted. "
+            f"WARNING ⚠️ The file '{weight}' appears to be improperly saved or formatted. "
             f"For optimal results, use model.save('filename.pt') to correctly save YOLO models."
         )
         ckpt = {"model": ckpt.model}
@@ -1350,7 +1463,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         scale = d.get("scale")
         if not scale:
             scale = tuple(scales.keys())[0]
-            LOGGER.warning(f"no model scale passed. Assuming scale='{scale}'.")
+            LOGGER.warning(f"WARNING ⚠️ no model scale passed. Assuming scale='{scale}'.")
         depth, width, max_channels = scales[scale]
 
     if act:
@@ -1518,7 +1631,7 @@ def yaml_model_load(path):
     path = Path(path)
     if path.stem in (f"yolov{d}{x}6" for x in "nsmlx" for d in (5, 8)):
         new_stem = re.sub(r"(\d+)([nslmx])6(.+)?$", r"\1\2-p6\3", path.stem)
-        LOGGER.warning(f"Ultralytics YOLO P6 models now use -p6 suffix. Renaming {path.stem} to {new_stem}.")
+        LOGGER.warning(f"WARNING ⚠️ Ultralytics YOLO P6 models now use -p6 suffix. Renaming {path.stem} to {new_stem}.")
         path = path.with_name(new_stem + path.suffix)
 
     unified_path = re.sub(r"(\d+)([nslmx])(.+)?$", r"\1\3", str(path))  # i.e. yolov8x.yaml -> yolov8.yaml
@@ -1610,7 +1723,7 @@ def guess_model_task(model):
 
     # Unable to determine task from model
     LOGGER.warning(
-        "Unable to automatically guess model task, assuming 'task=detect'. "
+        "WARNING ⚠️ Unable to automatically guess model task, assuming 'task=detect'. "
         "Explicitly define task for your model, i.e. 'task=detect', 'segment', 'classify','pose' or 'obb'."
     )
     return "detect"  # assume detect
