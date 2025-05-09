@@ -3,7 +3,7 @@
 from copy import copy
 
 from ultralytics.models.yolo.detect import DetectionTrainer
-from ultralytics.nn.tasks import RTDETRDetectionModel
+from ultralytics.nn.tasks import RTDETRDetectionModel, CustomRTDETRDetectionModel
 from ultralytics.utils import RANK, colorstr
 
 from .val import RTDETRDataset, RTDETRValidator
@@ -124,7 +124,7 @@ class CustomRTDETRTrainer(DetectionTrainer):
         Returns:
             (RTDETRDetectionModel): Initialized model.
         """
-        model = RTDETRDetectionModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
+        model = CustomRTDETRDetectionModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
         if weights:
             model.load(weights)
         return model
