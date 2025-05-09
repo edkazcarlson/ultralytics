@@ -686,7 +686,7 @@ class RTDETRDetectionModel(DetectionModel):
 
 
 
-class CustomRTDETRDetectionModel(DetectionModel):
+class RTDETRDetectionModel(DetectionModel):
     """
     RTDETR (Real-time DEtection and Tracking using Transformers) Detection Model class.
 
@@ -714,9 +714,9 @@ class CustomRTDETRDetectionModel(DetectionModel):
 
     def init_criterion(self):
         """Initialize the loss criterion for the RTDETRDetectionModel."""
-        from ultralytics.models.utils.loss import CustomRTDETRDetectionLoss
+        from ultralytics.models.utils.loss import RTDETRDetectionLoss
 
-        return CustomRTDETRDetectionLoss(nc=self.nc, use_vfl=True)
+        return RTDETRDetectionLoss(nc=self.nc, use_vfl=True)
 
     def loss(self, batch, preds=None):
         """
