@@ -61,6 +61,7 @@ from ultralytics.nn.modules import (
     RepVGGDW,
     ResNetLayer,
     RTDETRDecoder,
+    CustomRTDETRDecoder,
     SCDown,
     Segment,
     TorchVision,
@@ -746,6 +747,10 @@ class RTDETRDetectionModel(DetectionModel):
 
         preds = self.predict(img, batch=targets) if preds is None else preds
         dec_bboxes, dec_scores, enc_bboxes, enc_scores, dn_meta = preds if self.training else preds[1]
+        print(f'line 750 of rtdetr detection model')
+        print(f'dec_bboxes: {dec_bboxes.shape}, dec_scores: {dec_scores.shape}, enc_bboxes: {enc_bboxes.shape}, enc_scores: {enc_scores.shape}')
+
+
         if dn_meta is None:
             dn_bboxes, dn_scores = None, None
         else:
