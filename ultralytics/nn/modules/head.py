@@ -906,7 +906,7 @@ class CustomRTDETRDecoder(nn.Module):
 
         # Transformer module
         decoder_layer = DeformableTransformerDecoderLayer(hd, nh, d_ffn, dropout, act, self.nl, ndp)
-        self.decoder = DeformableTransformerDecoder(hd, decoder_layer, ndl, eval_idx)
+        self.decoder = CustomDeformableTransformerDecoder(hd, decoder_layer, ndl, eval_idx)
 
         # Denoising part
         self.denoising_class_embed = nn.Embedding(nc, hd)

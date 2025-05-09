@@ -727,7 +727,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
         eval_idx (int): Index of the layer to use during evaluation.
     """
 
-    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1):
+    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, ):
         """
         Initialize the DeformableTransformerDecoder with the given parameters.
 
