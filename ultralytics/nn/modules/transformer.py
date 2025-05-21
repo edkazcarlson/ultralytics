@@ -19,7 +19,9 @@ __all__ = (
     "LayerNorm2d",
     "AIFI",
     "DeformableTransformerDecoder",
+    "CustomDeformableTransformerDecoder",
     "DeformableTransformerDecoderLayer",
+    "CustomDeformableTransformerDecoderLayer"
     "MSDeformAttn",
     "MLP",
 )
@@ -626,6 +628,7 @@ class DeformableTransformerDecoderLayer(nn.Module):
         return self.forward_ffn(embed)
 
 
+
 class DeformableTransformerDecoder(nn.Module):
     """
     Implementation of Deformable Transformer Decoder based on PaddleDetection.
@@ -713,6 +716,117 @@ class DeformableTransformerDecoder(nn.Module):
         return torch.stack(dec_bboxes), torch.stack(dec_cls)
 
 
+class CustomDeformableTransformerDecoderLayer(nn.Module):
+    """
+    Deformable Transformer Decoder Layer inspired by PaddleDetection and Deformable-DETR implementations.
+
+    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/transformers/deformable_transformer.py
+    https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/deformable_transformer.py
+
+    Attributes:
+        self_attn (nn.MultiheadAttention): Self-attention module.
+        dropout1 (nn.Dropout): Dropout after self-attention.
+        norm1 (nn.LayerNorm): Layer normalization after self-attention.
+        cross_attn (MSDeformAttn): Cross-attention module.
+        dropout2 (nn.Dropout): Dropout after cross-attention.
+        norm2 (nn.LayerNorm): Layer normalization after cross-attention.
+        linear1 (nn.Linear): First linear layer in the feedforward network.
+        act (nn.Module): Activation function.
+        dropout3 (nn.Dropout): Dropout in the feedforward network.
+        linear2 (nn.Linear): Second linear layer in the feedforward network.
+        dropout4 (nn.Dropout): Dropout after the feedforward network.
+        norm3 (nn.LayerNorm): Layer normalization after the feedforward network.
+    """
+
+    def __init__(self, d_model=256, n_heads=8, d_ffn=1024, dropout=0.0, act=nn.ReLU(), n_levels=4, n_points=4, reg_count=1):
+        """
+        Initialize the CustomDeformableTransformerDecoderLayer with the given parameters.
+
+        Args:
+            d_model (int): Model dimension.
+            n_heads (int): Number of attention heads.
+            d_ffn (int): Dimension of the feedforward network.
+            dropout (float): Dropout probability.
+            act (nn.Module): Activation function.
+            n_levels (int): Number of feature levels.
+            n_points (int): Number of sampling points.
+        """
+        super().__init__()
+
+        # Self attention
+
+        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+
+        # Cross attention
+        self.cross_attn = MSDeformAttn(d_model, n_levels, n_heads, n_points)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        # FFN
+        self.linear1 = nn.Linear(d_model, d_ffn)
+        self.act = act
+        self.dropout3 = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(d_ffn, d_model)
+        self.dropout4 = nn.Dropout(dropout)
+        self.norm3 = nn.LayerNorm(d_model)
+
+        self.reg_count = reg_count
+
+    @staticmethod
+    def with_pos_embed(tensor, pos):
+        """Add positional embeddings to the input tensor, if provided."""
+        return tensor if pos is None else tensor + pos
+
+    def forward_ffn(self, tgt):
+        """
+        Perform forward pass through the Feed-Forward Network part of the layer.
+
+        Args:
+            tgt (torch.Tensor): Input tensor.
+
+        Returns:
+            (torch.Tensor): Output tensor after FFN.
+        """
+        tgt2 = self.linear2(self.dropout3(self.act(self.linear1(tgt))))
+        tgt = tgt + self.dropout4(tgt2)
+        return self.norm3(tgt)
+
+    def forward(self, embed, refer_bbox, feats, shapes, padding_mask=None, attn_mask=None, query_pos=None):
+        """
+        Perform the forward pass through the entire decoder layer.
+
+        Args:
+            embed (torch.Tensor): Input embeddings.
+            refer_bbox (torch.Tensor): Reference bounding boxes.
+            feats (torch.Tensor): Feature maps.
+            shapes (list): Feature shapes.
+            padding_mask (torch.Tensor, optional): Padding mask.
+            attn_mask (torch.Tensor, optional): Attention mask.
+            query_pos (torch.Tensor, optional): Query position embeddings.
+
+        Returns:
+            (torch.Tensor): Output tensor after decoder layer.
+        """
+        # Self attention
+        q = k = self.with_pos_embed(embed, query_pos)
+        tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), embed.transpose(0, 1), attn_mask=attn_mask)[
+            0
+        ].transpose(0, 1)
+        embed = embed + self.dropout1(tgt)
+        embed = self.norm1(embed)
+
+        # Cross attention
+        tgt = self.cross_attn(
+            self.with_pos_embed(embed, query_pos), refer_bbox.unsqueeze(2), feats, shapes, padding_mask
+        )
+        embed = embed + self.dropout2(tgt)
+        embed = self.norm2(embed)
+
+        # FFN
+        return self.forward_ffn(embed)
+
 
 class CustomDeformableTransformerDecoder(nn.Module):
     """
@@ -727,9 +841,9 @@ class CustomDeformableTransformerDecoder(nn.Module):
         eval_idx (int): Index of the layer to use during evaluation.
     """
 
-    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, ):
+    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, register_count = 1):
         """
-        Initialize the DeformableTransformerDecoder with the given parameters.
+        Initialize the CustomDeformableTransformerDecoder with the given parameters.
 
         Args:
             hidden_dim (int): Hidden dimension.
@@ -743,6 +857,17 @@ class CustomDeformableTransformerDecoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
 
+        self.reg = nn.Parameter(torch.zeros(1, register_count, hidden_dim))
+        nn.init.normal_(self.reg, mean=0.0, std=0.1)
+        self.reg_count = register_count
+
+    def pad_attn_mask(self, attn_mask):
+        attn_mask_padding = torch.ones(attn_mask.shape[0], 1, device=embed.device, dtype=torch.bool)
+        attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=1)
+
+        attn_mask_padding = torch.ones(1, attn_mask.shape[1], device=embed.device, dtype=torch.bool)
+        attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=0)
+        return attn_mask
     def forward(
         self,
         embed,  # decoder embeddings
@@ -773,25 +898,30 @@ class CustomDeformableTransformerDecoder(nn.Module):
             dec_bboxes (torch.Tensor): Decoded bounding boxes.
             dec_cls (torch.Tensor): Decoded classification scores.
         """
-        output = embed
+
+        attn_mask = self.pad_attn_mask(attn_mask)
+        output = torch.concat([embed, self.reg.expand(embed.shape[0], -1, -1)], dim=1)
         dec_bboxes = []
         dec_cls = []
         last_refined_bbox = None
         refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
-            output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, pos_mlp(refer_bbox))
+            refer_bbox = pos_mlp(refer_bbox)
+            padded_refer_bbox = torch.concat([refer_bbox, torch.zeros(refer_bbox.shape[0], self.reg_count, refer_bbox.shape[2], device=refer_bbox.device)], dim=1)
+            output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, padded_refer_bbox)
 
-            bbox = bbox_head[i](output)
+            non_register_output = output[:, 0:-1*self.reg_count, :]
+            bbox = bbox_head[i](non_register_output)
             refined_bbox = torch.sigmoid(bbox + inverse_sigmoid(refer_bbox))
 
             if self.training:
-                dec_cls.append(score_head[i](output))
+                dec_cls.append(score_head[i](non_register_output))
                 if i == 0:
                     dec_bboxes.append(refined_bbox)
                 else:
                     dec_bboxes.append(torch.sigmoid(bbox + inverse_sigmoid(last_refined_bbox)))
             elif i == self.eval_idx:
-                dec_cls.append(score_head[i](output))
+                dec_cls.append(score_head[i](non_register_output))
                 dec_bboxes.append(refined_bbox)
                 break
 

@@ -326,12 +326,14 @@ class DETRLoss(nn.Module):
             (dict): Dictionary of losses.
         """
 
-        print('in DETRLoss._get_loss')
-        print(f'pred_bboxes.shape: {pred_bboxes.shape}')
-        print(f'pred_scores.shape: {pred_scores.shape}')
-        print(f'gt_bboxes.shape: {gt_bboxes.shape}')
-        print(f'gt_cls.shape: {gt_cls.shape}')
-        print(f'gt_groups.shape: {gt_groups.shape}')
+        # print('in DETRLoss._get_loss')
+        # print(f'pred_bboxes.shape: {pred_bboxes.shape}')
+        # print(f'pred_scores.shape: {pred_scores.shape}')
+        # print(f'gt_bboxes.shape: {gt_bboxes.shape}')
+        # print(f'gt_cls.shape: {gt_cls.shape}')
+        # print(f'gt_groups.shape: {len(gt_groups)}')
+        # for i, group in enumerate(gt_groups):
+        #     print(f'gt_groups[{i}]: {group}')
 
 
         if match_indices is None:

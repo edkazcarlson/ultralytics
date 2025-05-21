@@ -747,9 +747,11 @@ class RTDETRDetectionModel(DetectionModel):
 
         preds = self.predict(img, batch=targets) if preds is None else preds
         dec_bboxes, dec_scores, enc_bboxes, enc_scores, dn_meta = preds if self.training else preds[1]
-        print(f'line 750 of rtdetr detection model')
-        print(f'dec_bboxes: {dec_bboxes.shape}, dec_scores: {dec_scores.shape}, enc_bboxes: {enc_bboxes.shape}, enc_scores: {enc_scores.shape}')
-
+        # print(f'line 750 of rtdetr detection model')
+        # print(f'dec_bboxes: {dec_bboxes.shape}, dec_scores: {dec_scores.shape}, enc_bboxes: {enc_bboxes.shape}, enc_scores: {enc_scores.shape}')
+        # 750 of rtdetr detection model
+        # dec_bboxes: torch.Size([6, 16, 468, 4]), dec_scores: torch.Size([6, 16, 468, 80]), enc_bboxes: torch.Size([16, 300, 4]), enc_scores: torch.Size([16, 300, 80]) 
+        # 16 = batch size
 
         if dn_meta is None:
             dn_bboxes, dn_scores = None, None
@@ -1595,6 +1597,8 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             if m in {Detect, YOLOEDetect, Segment, YOLOESegment, Pose, OBB}:
                 m.legacy = legacy
         elif m is RTDETRDecoder:  # special case, channels arg must be passed in index 1
+            args.insert(1, [ch[x] for x in f])
+        elif m is CustomRTDETRDecoder:  # special case, channels arg must be passed in index 1
             args.insert(1, [ch[x] for x in f])
         elif m is CBLinear:
             c2 = args[0]

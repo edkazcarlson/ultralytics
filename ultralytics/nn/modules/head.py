@@ -14,10 +14,10 @@ from ultralytics.utils.torch_utils import fuse_conv_and_bn, smart_inference_mode
 
 from .block import DFL, SAVPE, BNContrastiveHead, ContrastiveHead, Proto, Residual, SwiGLUFFN
 from .conv import Conv, DWConv
-from .transformer import MLP, DeformableTransformerDecoder, DeformableTransformerDecoderLayer, CustomDeformableTransformerDecoder
+from .transformer import MLP, DeformableTransformerDecoder, DeformableTransformerDecoderLayer, CustomDeformableTransformerDecoderLayer, CustomDeformableTransformerDecoder
 from .utils import bias_init_with_prob, linear_init
 
-__all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder", "v10Detect", "YOLOEDetect", "YOLOESegment"
+__all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder", "CustomRTDETRDecoder", "v10Detect", "YOLOEDetect", "YOLOESegment"
 
 
 class Detect(nn.Module):
@@ -843,7 +843,7 @@ class RTDETRDecoder(nn.Module):
 
 class CustomRTDETRDecoder(nn.Module):
     """
-    Real-Time Deformable Transformer Decoder (RTDETRDecoder) module for object detection.
+    Custom Real-Time Deformable Transformer Decoder (RTDETRDecoder) module for object detection.
 
     This decoder module utilizes Transformer architecture along with deformable convolutions to predict bounding boxes
     and class labels for objects in an image. It integrates features from multiple layers and runs through a series of
@@ -905,7 +905,7 @@ class CustomRTDETRDecoder(nn.Module):
         # self.input_proj = nn.ModuleList(Conv(x, hd, act=False) for x in ch)
 
         # Transformer module
-        decoder_layer = DeformableTransformerDecoderLayer(hd, nh, d_ffn, dropout, act, self.nl, ndp)
+        decoder_layer = CustomDeformableTransformerDecoderLayer(hd, nh, d_ffn, dropout, act, self.nl, ndp)
         self.decoder = CustomDeformableTransformerDecoder(hd, decoder_layer, ndl, eval_idx)
 
         # Denoising part

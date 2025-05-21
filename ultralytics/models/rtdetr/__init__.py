@@ -4,4 +4,4 @@ from .model import RTDETR, CustomRTDETR
 from .predict import RTDETRPredictor, CustomRTDETRPredictor
 from .val import RTDETRValidator, CustomRTDETRValidator
 
-__all__ = "RTDETRPredictor", "RTDETRValidator", "RTDETR"
+__all__ = "RTDETRPredictor", "RTDETRValidator", "RTDETR", "CustomRRTDETRPredictor", "CustomRRTDETRValidator", "CustomRRTDETR"
