@@ -816,11 +816,13 @@ class CustomDeformableTransformerDecoderLayer(nn.Module):
         ].transpose(0, 1)
         embed = embed + self.dropout1(tgt)
         embed = self.norm1(embed)
-
+        pre_cross_attn = self.with_pos_embed(embed, query_pos)
+        cross_attn_input = pre_cross_attn[:, 0:-self.reg_count, :]
         # Cross attention
         tgt = self.cross_attn(
-            self.with_pos_embed(embed, query_pos), refer_bbox.unsqueeze(2), feats, shapes, padding_mask
+            cross_attn_input, refer_bbox.unsqueeze(2), feats, shapes, padding_mask
         )
+        tgt = torch.concat([tgt, pre_cross_attn[:, -self.reg_count:, :]], dim=1)
         embed = embed + self.dropout2(tgt)
         embed = self.norm2(embed)
 
@@ -862,12 +864,15 @@ class CustomDeformableTransformerDecoder(nn.Module):
         self.reg_count = register_count
 
     def pad_attn_mask(self, attn_mask):
-        attn_mask_padding = torch.ones(attn_mask.shape[0], 1, device=embed.device, dtype=torch.bool)
+        attn_mask_padding = torch.ones(attn_mask.shape[0], 1, device=attn_mask.device, dtype=torch.bool)
         attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=1)
 
-        attn_mask_padding = torch.ones(1, attn_mask.shape[1], device=embed.device, dtype=torch.bool)
+        attn_mask_padding = torch.ones(1, attn_mask.shape[1], device=attn_mask.device, dtype=torch.bool)
         attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=0)
+
         return attn_mask
+    
+
     def forward(
         self,
         embed,  # decoder embeddings
@@ -906,9 +911,9 @@ class CustomDeformableTransformerDecoder(nn.Module):
         last_refined_bbox = None
         refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
-            refer_bbox = pos_mlp(refer_bbox)
-            padded_refer_bbox = torch.concat([refer_bbox, torch.zeros(refer_bbox.shape[0], self.reg_count, refer_bbox.shape[2], device=refer_bbox.device)], dim=1)
-            output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, padded_refer_bbox)
+            padded_refer_bbox = pos_mlp(refer_bbox)
+            padded_refer_bbox = torch.concat([padded_refer_bbox, torch.zeros(padded_refer_bbox.shape[0], self.reg_count, padded_refer_bbox.shape[2], device=refer_bbox.device)], dim=1)
+            output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, query_pos = padded_refer_bbox)
 
             non_register_output = output[:, 0:-1*self.reg_count, :]
             bbox = bbox_head[i](non_register_output)
