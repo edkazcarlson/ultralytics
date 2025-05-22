@@ -904,7 +904,8 @@ class CustomDeformableTransformerDecoder(nn.Module):
             dec_cls (torch.Tensor): Decoded classification scores.
         """
 
-        attn_mask = self.pad_attn_mask(attn_mask)
+        if attn_mask is not None:
+            attn_mask = self.pad_attn_mask(attn_mask)
         output = torch.concat([embed, self.reg.expand(embed.shape[0], -1, -1)], dim=1)
         dec_bboxes = []
         dec_cls = []
@@ -912,7 +913,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
         refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
             padded_refer_bbox = pos_mlp(refer_bbox)
-            padded_refer_bbox = torch.concat([padded_refer_bbox, torch.zeros(padded_refer_bbox.shape[0], self.reg_count, padded_refer_bbox.shape[2], device=refer_bbox.device)], dim=1)
+            padded_refer_bbox = torch.concat([padded_refer_bbox, torch.zeros(padded_refer_bbox.shape[0], self.reg_count, padded_refer_bbox.shape[2], device=refer_bbox.device, dtype=padded_refer_bbox.dtype)], dim=1)
             output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, query_pos = padded_refer_bbox)
 
             non_register_output = output[:, 0:-1*self.reg_count, :]
