@@ -827,7 +827,8 @@ class CustomDeformableTransformerDecoderLayer(nn.Module):
         embed = self.norm2(embed)
 
         # FFN
-        return self.forward_ffn(embed)
+        embed =  self.forward_ffn(embed)
+        return embed
 
 
 class CustomDeformableTransformerDecoder(nn.Module):
@@ -864,10 +865,10 @@ class CustomDeformableTransformerDecoder(nn.Module):
         self.reg_count = register_count
 
     def pad_attn_mask(self, attn_mask):
-        attn_mask_padding = torch.ones(attn_mask.shape[0], 1, device=attn_mask.device, dtype=torch.bool)
+        attn_mask_padding = torch.zeros(attn_mask.shape[0], 1, device=attn_mask.device, dtype=torch.bool)
         attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=1)
 
-        attn_mask_padding = torch.ones(1, attn_mask.shape[1], device=attn_mask.device, dtype=torch.bool)
+        attn_mask_padding = torch.zeros(1, attn_mask.shape[1], device=attn_mask.device, dtype=torch.bool)
         attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=0)
 
         return attn_mask
