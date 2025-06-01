@@ -152,6 +152,7 @@ class BaseValidator:
             # self.model = model
             self.loss = torch.zeros_like(trainer.loss_items, device=trainer.device)
             self.args.plots &= trainer.stopper.possible_stop or (trainer.epoch == trainer.epochs - 1)
+            self.epoch = trainer.epoch
             model.eval()
         else:
             if str(self.args.model).endswith(".yaml") and model is None:

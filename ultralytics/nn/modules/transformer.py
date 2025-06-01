@@ -844,7 +844,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
         eval_idx (int): Index of the layer to use during evaluation.
     """
 
-    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, register_count = 1):
+    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, register_count = 1, training_laps = 1, backprop_lap_weights = [1]):
         """
         Initialize the CustomDeformableTransformerDecoder with the given parameters.
 
@@ -855,6 +855,10 @@ class CustomDeformableTransformerDecoder(nn.Module):
             eval_idx (int): Index of the layer to use during evaluation.
         """
         super().__init__()
+
+        if len(backprop_lap_weights) != training_laps:
+            raise ValueError(f'backprop_lap_weights must be the same length as training_laps, but got {len(backprop_lap_weights)} and {training_laps} respectively.')
+
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
@@ -910,6 +914,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
         output = torch.concat([embed, self.reg.expand(embed.shape[0], -1, -1)], dim=1)
         dec_bboxes = []
         dec_cls = []
+        registers = []
         last_refined_bbox = None
         refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
@@ -918,6 +923,9 @@ class CustomDeformableTransformerDecoder(nn.Module):
             output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, query_pos = padded_refer_bbox)
 
             non_register_output = output[:, 0:-1*self.reg_count, :]
+            # register_output = output[:, -1*self.reg_count:, :]
+            # registers.append(register_output)
+
             bbox = bbox_head[i](non_register_output)
             refined_bbox = torch.sigmoid(bbox + inverse_sigmoid(refer_bbox))
 
@@ -936,3 +944,4 @@ class CustomDeformableTransformerDecoder(nn.Module):
             refer_bbox = refined_bbox.detach() if self.training else refined_bbox
 
         return torch.stack(dec_bboxes), torch.stack(dec_cls)
+# in loss.py forward line 361, we only use the last dec_bboxes and dec_cls.

@@ -630,14 +630,16 @@ class CustomRTDETRDetectionModel(DetectionModel):
             "bboxes": batch["bboxes"].to(device=img.device),
             "batch_idx": batch_idx.to(img.device, dtype=torch.long).view(-1),
             "gt_groups": gt_groups,
+            "epoch": batch["epoch"]
         }
 
         preds = self.predict(img, batch=targets) if preds is None else preds
         dec_bboxes, dec_scores, enc_bboxes, enc_scores, dn_meta = preds if self.training else preds[1]
+        
         if dn_meta is None:
             dn_bboxes, dn_scores = None, None
         else:
-            dn_bboxes, dec_bboxes = torch.split(dec_bboxes, dn_meta["dn_num_split"], dim=2)
+            dn_bboxes, dec_bboxes = torch.split(dec_bboxes, dn_meta["dn_num_split"], dim=2) # ndec_bboxes: ([5, 4, 300, 4]), dn_meta["dn_num_split"] = (196, 300)
             dn_scores, dec_scores = torch.split(dec_scores, dn_meta["dn_num_split"], dim=2)
 
         dec_bboxes = torch.cat([enc_bboxes.unsqueeze(0), dec_bboxes])  # (7, bs, 300, 4)
@@ -659,7 +661,7 @@ class CustomRTDETRDetectionModel(DetectionModel):
             x (torch.Tensor): The input tensor.
             profile (bool): If True, profile the computation time for each layer.
             visualize (bool): If True, save feature maps for visualization.
-            batch (dict, optional): Ground truth data for evaluation.
+            batch (dict,loss optional): Ground truth data for evaluation.
             augment (bool): If True, perform data augmentation during inference.
             embed (list, optional): A list of feature vectors/embeddings to return.
 

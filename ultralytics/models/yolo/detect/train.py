@@ -112,6 +112,8 @@ class DetectionTrainer(BaseTrainer):
                 ]  # new shape (stretched to gs-multiple)
                 imgs = nn.functional.interpolate(imgs, size=ns, mode="bilinear", align_corners=False)
             batch["img"] = imgs
+            
+        batch['epoch'] = self.epoch  # attach epoch to batch
         return batch
 
     def set_model_attributes(self):
