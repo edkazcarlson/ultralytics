@@ -3,6 +3,9 @@
 #  Once I can confirm custom rtdetr works, then update CustomDeformableTransformerDecoder to do an extra head on SOME of the registers to predict loss, then update the CustomDetrLoss to calculate the loss prediction loss, based on the epoch entry in the batch. Also update the logic in the aux loss so that we no longer read from every single layer, but just the last layer per lap.
 
 
+# Points to change to do loss loss are:
+
+
 
 # from ultralytics import RTDETR
 

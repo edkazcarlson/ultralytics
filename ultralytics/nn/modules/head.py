@@ -964,6 +964,7 @@ class CustomRTDETRDecoder(nn.Module):
 
         # Decoder
         dec_bboxes, dec_scores = self.decoder(
+        # dec_bboxes, dec_scores, dec_loss_pred = self.decoder(
             embed,
             refer_bbox,
             feats,
@@ -974,6 +975,8 @@ class CustomRTDETRDecoder(nn.Module):
             attn_mask=attn_mask,
         )
         x = dec_bboxes, dec_scores, enc_bboxes, enc_scores, dn_meta
+        # x = dec_bboxes, dec_scores, dec_loss_pred, enc_bboxes, enc_scores, dn_meta
+        
         if self.training:
             return x
         # (bs, 300, 4+nc)

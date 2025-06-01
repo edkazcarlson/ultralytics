@@ -844,7 +844,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
         eval_idx (int): Index of the layer to use during evaluation.
     """
 
-    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, register_count = 1, training_laps = 1, backprop_lap_weights = [1]):
+    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, register_count = 1, loss_prediction_registers = 1, training_laps = 1, backprop_lap_weights = [1]):
         """
         Initialize the CustomDeformableTransformerDecoder with the given parameters.
 
@@ -859,6 +859,9 @@ class CustomDeformableTransformerDecoder(nn.Module):
         if len(backprop_lap_weights) != training_laps:
             raise ValueError(f'backprop_lap_weights must be the same length as training_laps, but got {len(backprop_lap_weights)} and {training_laps} respectively.')
 
+        if loss_prediction_registers < register_count:
+            raise ValueError(f'loss_prediction_registers must be greater than or equal to register_count, but got {loss_prediction_registers} and {register_count} respectively.')
+
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
@@ -867,6 +870,14 @@ class CustomDeformableTransformerDecoder(nn.Module):
         self.reg = nn.Parameter(torch.zeros(1, register_count, hidden_dim))
         nn.init.normal_(self.reg, mean=0.0, std=0.1)
         self.reg_count = register_count
+        self.loss_prediction_reg_count = loss_prediction_registers
+
+        # self.loss_prediction_heads = nn.ModuleList()
+        # for x in ['loss_bbox', 'loss_giou', 'loss_class']:
+        #     input_dim = hidden_dim * loss_prediction_registers
+        #     head = MLP(input_dim = input_dim, hidden_dim = input_dim // 2, output_dim=1, num_layers=3, act=nn.ReLU(), sigmoid=True) # register -> hidden -> 1
+        #     self.loss_prediction_heads.append(head)
+
 
     def pad_attn_mask(self, attn_mask):
         attn_mask_padding = torch.zeros(attn_mask.shape[0], 1, device=attn_mask.device, dtype=torch.bool)
@@ -923,7 +934,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
             output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, query_pos = padded_refer_bbox)
 
             non_register_output = output[:, 0:-1*self.reg_count, :]
-            # register_output = output[:, -1*self.reg_count:, :]
+            # register_output = output[:, -1*self.reg_count:, :] # batch x reg_count x hiddendim
             # registers.append(register_output)
 
             bbox = bbox_head[i](non_register_output)
@@ -944,4 +955,22 @@ class CustomDeformableTransformerDecoder(nn.Module):
             refer_bbox = refined_bbox.detach() if self.training else refined_bbox
 
         return torch.stack(dec_bboxes), torch.stack(dec_cls)
+    
+        # registers = torch.stack(registers) #loops x batch x reg_count x hiddendim
+        # registers = registers[:, :, :self.loss_prediction_reg_count, :] # loops x batch x loss_prediction_registers x hiddendim
+        # registers = torch.permute(registers, (1, 0, 2, 3)) # batch x loops x loss_prediction_registers x hiddendim
+        # registers = registers.reshape(-1, self.hidden_dim * self.loss_prediction_reg_count) # batch * loops x loss_prediction_registers * hiddendim
+        # for idx, x in enumerate(['loss_bbox', 'loss_giou', 'loss_class']):
+        #     head = self.loss_prediction_heads[idx]
+        #     loss = head(registers).reshape(-1, self.loops, 1) # batch, loops, 1(predicted loss)
+        #     if x == 'loss_bbox':
+        #         loss_bbox = loss
+        #     elif x == 'loss_giou':
+        #         loss_giou = loss
+        #     elif x == 'loss_class':
+        #         loss_cls = loss
+
+        # return torch.stack(dec_bboxes), torch.stack(dec_cls), {'loss_bbox' : loss_bbox, 'loss_giou': loss_giou, 'loss_cls': loss_cls} 
+
+
 # in loss.py forward line 361, we only use the last dec_bboxes and dec_cls.

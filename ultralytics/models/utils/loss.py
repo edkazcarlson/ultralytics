@@ -498,6 +498,7 @@ class CustomDETRLoss(nn.Module):
         uni_match_ind=0,
         gamma=1.5,
         alpha=0.25,
+        # loss_loss_start_epoch=50
     ):
         """
         Initialize DETR loss function with customizable components and gains.
@@ -530,6 +531,8 @@ class CustomDETRLoss(nn.Module):
         self.use_uni_match = use_uni_match
         self.uni_match_ind = uni_match_ind
         self.device = None
+
+        # self.loss_loss_start_epoch = loss_loss_start_epoch
 
     def _get_loss_class(self, pred_scores, targets, gt_scores, num_gts, postfix=""):
         """
@@ -642,6 +645,7 @@ class CustomDETRLoss(nn.Module):
         self,
         pred_bboxes,
         pred_scores,
+        # pred_losses,
         gt_bboxes,
         gt_cls,
         gt_groups,
@@ -654,8 +658,8 @@ class CustomDETRLoss(nn.Module):
         Get auxiliary losses for intermediate decoder layers.
 
         Args:
-            pred_bboxes (torch.Tensor): Predicted bounding boxes from auxiliary layers.
-            pred_scores (torch.Tensor): Predicted scores from auxiliary layers.
+            pred_bboxes (torch.Tensor): Predicted bounding boxes from auxiliary iterations.
+            pred_scores (torch.Tensor): Predicted scores from auxiliary iterations.
             gt_bboxes (torch.Tensor): Ground truth bounding boxes.
             gt_cls (torch.Tensor): Ground truth classes.
             gt_groups (List[int]): Number of ground truths per image.
@@ -668,6 +672,9 @@ class CustomDETRLoss(nn.Module):
             (dict): Dictionary of auxiliary losses.
         """
         # NOTE: loss class, bbox, giou, mask, dice
+
+        # total_iterations = pred_bboxes.shape[0] + 1
+
         loss = torch.zeros(5 if masks is not None else 3, device=pred_bboxes.device)
         if match_indices is None and self.use_uni_match:
             match_indices = self.matcher(
@@ -680,10 +687,12 @@ class CustomDETRLoss(nn.Module):
                 gt_mask=gt_mask,
             )
         for i, (aux_bboxes, aux_scores) in enumerate(zip(pred_bboxes, pred_scores)):
+        # for i, (aux_bboxes, aux_scores, aux_loss) in enumerate(zip(pred_bboxes, pred_scores, pred_losses)):
             aux_masks = masks[i] if masks is not None else None
             loss_ = self._get_loss(
                 aux_bboxes,
                 aux_scores,
+                # aux_loss
                 gt_bboxes,
                 gt_cls,
                 gt_groups,
@@ -692,9 +701,15 @@ class CustomDETRLoss(nn.Module):
                 postfix=postfix,
                 match_indices=match_indices,
             )
+
+            # iteration_multiplier = Math.sin(Math.pi * i / (2 * total_iterations))
+
             loss[0] += loss_[f"loss_class{postfix}"]
             loss[1] += loss_[f"loss_bbox{postfix}"]
             loss[2] += loss_[f"loss_giou{postfix}"]
+            # loss[3] += loss_[f"loss_loss_class{postfix}"]
+            # loss[4] += loss_[f"loss_loss_bbox{postfix}"]
+            # loss[5] += loss_[f"loss_loss_giou{postfix}"]
             # if masks is not None and gt_mask is not None:
             #     loss_ = self._get_loss_mask(aux_masks, gt_mask, match_indices, postfix)
             #     loss[3] += loss_[f'loss_mask{postfix}']
@@ -704,6 +719,9 @@ class CustomDETRLoss(nn.Module):
             f"loss_class_aux{postfix}": loss[0],
             f"loss_bbox_aux{postfix}": loss[1],
             f"loss_giou_aux{postfix}": loss[2],
+            # f"loss_loss_class{postfix}": loss[3],
+            # f"loss_loss_bbox_aux{postfix}": loss[4],
+            # f"loss_loss_giou_aux{postfix}": loss[5],
         }
         # if masks is not None and gt_mask is not None:
         #     loss[f'loss_mask_aux{postfix}'] = loss[3]
@@ -752,10 +770,26 @@ class CustomDETRLoss(nn.Module):
         )
         return pred_assigned, gt_assigned
 
+    @staticmethod
+    def get_loss_loss(predicted_losses, total_loss, weight = 0.01):
+        """
+        Calculates the loss caused by the error in loss prediction
+        predicted_losses: dict of lass name to gt loss.
+        total_loss: dict of loss name to predicted loss amount.
+        """
+        loss = nn.MSELoss()
+        output = {}
+        for k in ['loss_bbox', 'loss_giou', 'loss_class']:
+            predictedLoss = predicted_losses[k]
+            output[f'loss_{k}'] = loss(predictedLoss, total_loss[k]) * weight
+        return output
+
+
     def _get_loss(
         self,
         pred_bboxes,
         pred_scores,
+        # pred_loss,
         gt_bboxes,
         gt_cls,
         gt_groups,
@@ -808,18 +842,23 @@ class CustomDETRLoss(nn.Module):
         if len(gt_bboxes):
             gt_scores[idx] = bbox_iou(pred_bboxes.detach(), gt_bboxes, xywh=True).squeeze(-1)
 
-        return {
+        toReturn =  {
             **self._get_loss_class(pred_scores, targets, gt_scores, len(gt_bboxes), postfix),
             **self._get_loss_bbox(pred_bboxes, gt_bboxes, postfix),
             # **(self._get_loss_mask(masks, gt_mask, match_indices, postfix) if masks is not None and gt_mask is not None else {})
         }
 
+        # toReturn = {**toReturn, get_loss_loss(toReturn, pred_loss)}
+
+        return toReturn
+
     def forward(self, pred_bboxes, pred_scores, batch, postfix="", **kwargs):
+    # def forward(self, pred_bboxes, pred_scores, pred_losses, batch, postfix="", **kwargs):
         """
         Calculate loss for predicted bounding boxes and scores.
 
         Args:
-            pred_bboxes (torch.Tensor): Predicted bounding boxes, shape [l, b, query, 4].
+            pred_bboxes (torch.Tensor): Predicted bounding boxes, shape [l, b, query, 4]. l is the number of layers we backprop from.
             pred_scores (torch.Tensor): Predicted class scores, shape [l, b, query, num_classes].
             batch (dict): Batch information containing:
                 cls (torch.Tensor): Ground truth classes, shape [num_gts].
@@ -835,25 +874,25 @@ class CustomDETRLoss(nn.Module):
             Uses last elements of pred_bboxes and pred_scores for main loss, and the rest for auxiliary losses if
             self.aux_loss is True.
         """
-        # print(f'\n\nin DETRLoss pred_bboxes.shape: {pred_bboxes.shape}')
+
         self.device = pred_bboxes.device
         match_indices = kwargs.get("match_indices", None)
         gt_cls, gt_bboxes, gt_groups = batch["cls"], batch["bboxes"], batch["gt_groups"]
 
         total_loss = self._get_loss(
             pred_bboxes[-1], pred_scores[-1], gt_bboxes, gt_cls, gt_groups, postfix=postfix, match_indices=match_indices
+            # pred_bboxes[-1], pred_scores[-1], pred_losses[-1], gt_bboxes, gt_cls, gt_groups, postfix=postfix, match_indices=match_indices
         )
 
         if self.aux_loss:
             total_loss.update(
                 self._get_loss_aux(
                     pred_bboxes[:-1], pred_scores[:-1], gt_bboxes, gt_cls, gt_groups, match_indices, postfix
+                    # pred_bboxes[:-1], pred_scores[:-1], pred_losses[:-1], gt_bboxes, gt_cls, gt_groups, match_indices, postfix
                 )
             )
 
         return total_loss
-
-
 
 
 
@@ -881,8 +920,9 @@ class CustomRTDETRDetectionLoss(CustomDETRLoss):
         """
         
         pred_bboxes, pred_scores = preds
-        # pred_bboxes, pred_scores, predicted_losses = preds #predicted_losses is a dict of loss name -> predicted.
+        # pred_bboxes, pred_scores, pred_losses = preds #pred_losses is a dict of loss name -> predicted loss value.
         total_loss = super().forward(pred_bboxes, pred_scores, batch)
+        # total_loss = super().forward(pred_bboxes, pred_scores, pred_losses, batch)
 
         # Check for denoising metadata to compute denoising training loss
         if dn_meta is not None:
@@ -932,14 +972,3 @@ class CustomRTDETRDetectionLoss(CustomDETRLoss):
                 dn_match_indices.append((torch.zeros([0], dtype=torch.long), torch.zeros([0], dtype=torch.long)))
         return dn_match_indices
 
-    @staticmethod
-    def get_loss_loss(predicted_losses, total_loss, weight = 0.01):
-        """
-        Calculates the loss caused by the error in loss prediction
-        """
-        loss = nn.MSELoss()
-        output = {}
-        for k in ['loss_bbox', 'loss_giou']:
-            predictedLoss = predicted_losses[k]
-            output[k] = loss(predictedLoss, total_loss[k]) * weight
-        return output
