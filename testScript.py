@@ -3,20 +3,20 @@
 #  Once I can confirm custom rtdetr works, then update CustomDeformableTransformerDecoder to do an extra head on SOME of the registers to predict loss, then update the CustomDetrLoss to calculate the loss prediction loss, based on the epoch entry in the batch. Also update the logic in the aux loss so that we no longer read from every single layer, but just the last layer per lap.
 
 
-# Points to change to do loss loss are:
+# Commit to uncomment for loss loss is: 1cb1e65c5dea49c6dbc09520527e01ef8877bbea
 
 
 
-# from ultralytics import RTDETR
+from ultralytics import RTDETR
 
-# # # Load a COCO-pretrained RT-DETR-l model
-# model = RTDETR("rtdetr-l.yaml")
+# # Load a COCO-pretrained RT-DETR-l model
+model = RTDETR("rtdetr-l.yaml")
 
-# # # Display model information (optional)
-# model.info()
+# # Display model information (optional)
+model.info()
 
-# # # Train the model on the COCO8 example dataset for 100 epochs
-# results = model.train(data="/home/ecarlson/Desktop/myVoc.yml", epochs=50, imgsz=640)
+# # Train the model on the COCO8 example dataset for 100 epochs
+results = model.train(data="/home/ecarlson/Desktop/myVoc.yml", epochs=50, imgsz=640)
 # results = model.train(data="/home/ecarlson/Desktop/myCoco.yml", epochs=10, imgsz=640)
 
 # from ultralytics import RTDETR
@@ -33,17 +33,17 @@
 
 
 
-from ultralytics import CustomRTDETR
+# from ultralytics import CustomRTDETR
 
-# # Load a COCO-pretrained RT-DETR-l model
-model = CustomRTDETR("custom-rtdetr-l.yaml")
+# # # Load a COCO-pretrained RT-DETR-l model
+# model = CustomRTDETR("custom-rtdetr-l.yaml")
 
-# # Display model information (optional)
-model.info()
+# # # Display model information (optional)
+# model.info()
 
-# # Train the model on the COCO8 example dataset for 10 epochs
-results = model.train(data="/home/ecarlson/Desktop/myVoc.yml", epochs=100, imgsz=640)
-# results = model.train(data="/home/ecarlson/Desktop/myCoco.yml", epochs=10, imgsz=640)
+# # # Train the model on the COCO8 example dataset for 10 epochs
+# results = model.train(data="/home/ecarlson/Desktop/myVoc.yml", epochs=100, imgsz=640)
+# # results = model.train(data="/home/ecarlson/Desktop/myCoco.yml", epochs=10, imgsz=640)
 
 
 
