@@ -702,7 +702,7 @@ class CustomDETRLoss(nn.Module):
                 match_indices=match_indices,
             )
 
-            # iteration_multiplier = Math.sin(Math.pi * i / (2 * total_iterations))
+            # iteration_multiplier = Math.sin(Math.pi * i / (2 * total_iterations)) # attend less to earlier layers, slowly ramp up to the final layer.
 
             loss[0] += loss_[f"loss_class{postfix}"]
             loss[1] += loss_[f"loss_bbox{postfix}"]

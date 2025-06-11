@@ -870,6 +870,7 @@ class CustomRTDETRDecoder(nn.Module):
         label_noise_ratio=0.5,
         box_noise_scale=1.0,
         learnt_init_query=False,
+        register_count = 10
     ):
         """
         Initializes the RTDETRDecoder module with the given parameters.
@@ -905,8 +906,8 @@ class CustomRTDETRDecoder(nn.Module):
         # self.input_proj = nn.ModuleList(Conv(x, hd, act=False) for x in ch)
 
         # Transformer module
-        decoder_layer = CustomDeformableTransformerDecoderLayer(hd, nh, d_ffn, dropout, act, self.nl, ndp)
-        self.decoder = CustomDeformableTransformerDecoder(hd, decoder_layer, ndl, eval_idx)
+        decoder_layer = CustomDeformableTransformerDecoderLayer(hd, nh, d_ffn, dropout, act, self.nl, ndp, reg_count=register_count)
+        self.decoder = CustomDeformableTransformerDecoder(hd, decoder_layer, ndl, eval_idx, register_count=register_count)
 
         # Denoising part
         self.denoising_class_embed = nn.Embedding(nc, hd)

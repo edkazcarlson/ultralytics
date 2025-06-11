@@ -859,8 +859,8 @@ class CustomDeformableTransformerDecoder(nn.Module):
         if len(backprop_lap_weights) != training_laps:
             raise ValueError(f'backprop_lap_weights must be the same length as training_laps, but got {len(backprop_lap_weights)} and {training_laps} respectively.')
 
-        if loss_prediction_registers < register_count:
-            raise ValueError(f'loss_prediction_registers must be greater than or equal to register_count, but got {loss_prediction_registers} and {register_count} respectively.')
+        if loss_prediction_registers > register_count:
+            raise ValueError(f'register_count must be greater than or equal to loss_prediction_registers, but got {loss_prediction_registers} and {register_count} respectively.')
 
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
@@ -880,10 +880,10 @@ class CustomDeformableTransformerDecoder(nn.Module):
 
 
     def pad_attn_mask(self, attn_mask):
-        attn_mask_padding = torch.zeros(attn_mask.shape[0], 1, device=attn_mask.device, dtype=torch.bool)
+        attn_mask_padding = torch.zeros(attn_mask.shape[0], self.reg_count, device=attn_mask.device, dtype=torch.bool)
         attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=1)
 
-        attn_mask_padding = torch.zeros(1, attn_mask.shape[1], device=attn_mask.device, dtype=torch.bool)
+        attn_mask_padding = torch.zeros(self.reg_count, attn_mask.shape[1], device=attn_mask.device, dtype=torch.bool)
         attn_mask = torch.concat([attn_mask_padding, attn_mask], dim=0)
 
         return attn_mask
@@ -931,6 +931,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
         for i, layer in enumerate(self.layers):
             padded_refer_bbox = pos_mlp(refer_bbox)
             padded_refer_bbox = torch.concat([padded_refer_bbox, torch.zeros(padded_refer_bbox.shape[0], self.reg_count, padded_refer_bbox.shape[2], device=refer_bbox.device, dtype=padded_refer_bbox.dtype)], dim=1)
+            
             output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, query_pos = padded_refer_bbox)
 
             non_register_output = output[:, 0:-1*self.reg_count, :]
