@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.nn import functional as F
+import torchvision.transforms as T
 
 from ultralytics.data.utils import polygons2masks, polygons2masks_overlap
 from ultralytics.utils import LOGGER, colorstr
@@ -313,6 +314,40 @@ class Compose:
             ])
         """
         return f"{self.__class__.__name__}({', '.join([f'{t}' for t in self.transforms])})"
+
+class LensFocusTransform:
+    def __init__(self):
+        # print('lens focus transform')
+        pass
+    
+    def __call__(self, labels):
+        instances = labels['instances']
+        instances._bboxes.convert('xyxy')
+        bboxes = instances.bboxes
+        img = labels["img"]
+
+        # # Convert numpy image to PIL Image
+        img_pil = Image.fromarray(img)
+        # Apply Gaussian blur using torchvision
+        gaussian_blur = T.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5)) #0.99  0.973  with k = 5, sig = 0.1, 0.5
+        img_blurred = gaussian_blur(img_pil)
+        # Convert back to numpy array
+        labels["img"] = np.array(img_blurred)
+        # Create a mask for all bounding boxes (inside = 1, outside = 0)
+        mask = np.zeros(img.shape[:2], dtype=np.uint8)
+        for box in bboxes:
+            x1, y1, x2, y2 = map(int, box)
+            mask[y1:y2, x1:x2] = 1
+
+        # Invert mask: outside boxes = 1, inside = 0
+        outside_mask = 1 - mask
+
+        # Blur the original image (already done above as img_blurred)
+        # Combine: keep original image inside boxes, blurred outside
+        labels["img"] = np.where(outside_mask[..., None], np.array(img_blurred), img)
+
+
+        return labels
 
 
 class BaseMixTransform:
@@ -2477,7 +2512,7 @@ class RandomLoadText:
         return labels
 
 
-def v8_transforms(dataset, imgsz, hyp, stretch=False):
+def v8_transforms(dataset, imgsz, hyp, stretch=False, training=True):
     """
     Applies a series of image transformations for training.
 
@@ -2531,18 +2566,31 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False):
             LOGGER.warning("No 'flip_idx' array defined in data.yaml, setting augmentation 'fliplr=0.0'")
         elif flip_idx and (len(flip_idx) != kpt_shape[0]):
             raise ValueError(f"data.yaml flip_idx={flip_idx} length must be equal to kpt_shape[0]={kpt_shape[0]}")
-
-    return Compose(
-        [
-            pre_transform,
-            MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
-            CutMix(dataset, pre_transform=pre_transform, p=hyp.cutmix),
-            Albumentations(p=1.0),
-            RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
-            RandomFlip(direction="vertical", p=hyp.flipud),
-            RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
-        ]
-    )  # transforms
+    if training:
+        return Compose(
+            [
+                pre_transform,
+                MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
+                CutMix(dataset, pre_transform=pre_transform, p=hyp.cutmix),
+                Albumentations(p=1.0),
+                RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
+                RandomFlip(direction="vertical", p=hyp.flipud),
+                RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
+                LensFocusTransform()
+            ]
+        )  # transforms
+    else:
+        return Compose(
+            [
+                pre_transform,
+                MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
+                CutMix(dataset, pre_transform=pre_transform, p=hyp.cutmix),
+                Albumentations(p=1.0),
+                RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
+                RandomFlip(direction="vertical", p=hyp.flipud),
+                RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
+            ]
+        )  # transforms
 
 
 # Classification augmentations -----------------------------------------------------------------------------------------
