@@ -774,6 +774,9 @@ class CustomDeformableTransformerDecoderLayer(nn.Module):
 
         self.reg_count = reg_count
 
+        self.reg = nn.Parameter(torch.zeros(1, reg_count, d_model))
+        nn.init.normal_(self.reg, mean=0.0, std=0.1)
+
     @staticmethod
     def with_pos_embed(tensor, pos):
         """Add positional embeddings to the input tensor, if provided."""
@@ -810,21 +813,32 @@ class CustomDeformableTransformerDecoderLayer(nn.Module):
             (torch.Tensor): Output tensor after decoder layer.
         """
         # Self attention
-        q = k = self.with_pos_embed(embed, query_pos)
+        q = k = self.with_pos_embed(embed, query_pos[:, 0:-self.reg_count, :])
+        q = torch.concat([q, self.reg.expand(q.shape[0], -1, -1)], dim=1)
+        k = torch.concat([k, self.reg.expand(q.shape[0], -1, -1)], dim=1)
+        embed = torch.concat([embed, self.reg.expand(q.shape[0], -1, -1)], dim=1)
         tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), embed.transpose(0, 1), attn_mask=attn_mask)[
             0
         ].transpose(0, 1)
         embed = embed + self.dropout1(tgt)
         embed = self.norm1(embed)
         pre_cross_attn = self.with_pos_embed(embed, query_pos)
-        cross_attn_input = pre_cross_attn[:, 0:-self.reg_count, :]
+
+        if self.reg_count == 0:
+            cross_attn_input = pre_cross_attn
+        else:
+            cross_attn_input = pre_cross_attn[:, 0:-self.reg_count, :]
+        
         # Cross attention
         tgt = self.cross_attn(
-            cross_attn_input, refer_bbox.unsqueeze(2), feats, shapes, padding_mask
+            cross_attn_input, refer_bbox.unsqueeze(2)[:,0:-self.reg_count,:,:], feats, shapes, padding_mask
         )
-        tgt = torch.concat([tgt, pre_cross_attn[:, -self.reg_count:, :]], dim=1)
+        if self.reg_count > 0:
+            tgt = torch.concat([tgt, pre_cross_attn[:, -self.reg_count:, :]], dim=1)
         embed = embed + self.dropout2(tgt)
         embed = self.norm2(embed)
+
+        embed = embed[:, 0:-self.reg_count, :]  # remove registers from the output
 
         # FFN
         embed =  self.forward_ffn(embed)
@@ -844,7 +858,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
         eval_idx (int): Index of the layer to use during evaluation.
     """
 
-    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, register_count = 1, loss_prediction_registers = 1, training_laps = 1, backprop_lap_weights = [1]):
+    def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1, reg_count = 1, loss_prediction_registers = 1, training_laps = 1, backprop_lap_weights = [1]):
         """
         Initialize the CustomDeformableTransformerDecoder with the given parameters.
 
@@ -859,17 +873,15 @@ class CustomDeformableTransformerDecoder(nn.Module):
         if len(backprop_lap_weights) != training_laps:
             raise ValueError(f'backprop_lap_weights must be the same length as training_laps, but got {len(backprop_lap_weights)} and {training_laps} respectively.')
 
-        if loss_prediction_registers > register_count:
-            raise ValueError(f'register_count must be greater than or equal to loss_prediction_registers, but got {loss_prediction_registers} and {register_count} respectively.')
+        # if loss_prediction_registers > register_count:
+            # raise ValueError(f'register_count must be greater than or equal to loss_prediction_registers, but got {loss_prediction_registers} and {register_count} respectively.')
 
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
 
-        self.reg = nn.Parameter(torch.zeros(1, register_count, hidden_dim))
-        nn.init.normal_(self.reg, mean=0.0, std=0.1)
-        self.reg_count = register_count
+        self.reg_count = reg_count
         self.loss_prediction_reg_count = loss_prediction_registers
 
         # self.loss_prediction_heads = nn.ModuleList()
@@ -906,7 +918,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
 
         Args:
             embed (torch.Tensor): Decoder embeddings.
-            refer_bbox (torch.Tensor): Reference bounding boxes.
+            refer_bbox (torch.Tensor): Reference bounding boxes. (1, num_queries + registercount, 4)
             feats (torch.Tensor): Image features.
             shapes (list): Feature shapes.
             bbox_head (nn.Module): Bounding box prediction head.
@@ -922,7 +934,7 @@ class CustomDeformableTransformerDecoder(nn.Module):
 
         if attn_mask is not None:
             attn_mask = self.pad_attn_mask(attn_mask)
-        output = torch.concat([embed, self.reg.expand(embed.shape[0], -1, -1)], dim=1)
+        output = embed
         dec_bboxes = []
         dec_cls = []
         registers = []
@@ -930,26 +942,23 @@ class CustomDeformableTransformerDecoder(nn.Module):
         refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
             padded_refer_bbox = pos_mlp(refer_bbox)
-            padded_refer_bbox = torch.concat([padded_refer_bbox, torch.zeros(padded_refer_bbox.shape[0], self.reg_count, padded_refer_bbox.shape[2], device=refer_bbox.device, dtype=padded_refer_bbox.dtype)], dim=1)
             
-            output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, query_pos = padded_refer_bbox)
+            output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, query_pos = padded_refer_bbox) # output does not contain registers
 
-            non_register_output = output[:, 0:-1*self.reg_count, :]
-            # register_output = output[:, -1*self.reg_count:, :] # batch x reg_count x hiddendim
-            # registers.append(register_output)
+            bbox = bbox_head[i](output) # bbox does not contain registers
 
-            bbox = bbox_head[i](non_register_output)
-            refined_bbox = torch.sigmoid(bbox + inverse_sigmoid(refer_bbox))
+            refined_bbox = torch.sigmoid(bbox + inverse_sigmoid(refer_bbox[:, 0:-self.reg_count, :]))
+            refined_bbox = torch.concat([refined_bbox, refer_bbox[:, -self.reg_count:, :]], dim=1)
 
             if self.training:
-                dec_cls.append(score_head[i](non_register_output))
+                dec_cls.append(score_head[i](output))
                 if i == 0:
-                    dec_bboxes.append(refined_bbox)
+                    dec_bboxes.append(refined_bbox[:, 0:-self.reg_count, :])
                 else:
-                    dec_bboxes.append(torch.sigmoid(bbox + inverse_sigmoid(last_refined_bbox)))
+                    dec_bboxes.append(torch.sigmoid(bbox + inverse_sigmoid(last_refined_bbox[:, 0:-self.reg_count, :])))
             elif i == self.eval_idx:
-                dec_cls.append(score_head[i](non_register_output))
-                dec_bboxes.append(refined_bbox)
+                dec_cls.append(score_head[i](output))
+                dec_bboxes.append(refined_bbox[:, 0:-self.reg_count, :])
                 break
 
             last_refined_bbox = refined_bbox

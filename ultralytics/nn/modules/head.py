@@ -870,7 +870,7 @@ class CustomRTDETRDecoder(nn.Module):
         label_noise_ratio=0.5,
         box_noise_scale=1.0,
         learnt_init_query=False,
-        register_count = 10
+        reg_count = 1
     ):
         """
         Initializes the RTDETRDecoder module with the given parameters.
@@ -906,8 +906,8 @@ class CustomRTDETRDecoder(nn.Module):
         # self.input_proj = nn.ModuleList(Conv(x, hd, act=False) for x in ch)
 
         # Transformer module
-        decoder_layer = CustomDeformableTransformerDecoderLayer(hd, nh, d_ffn, dropout, act, self.nl, ndp, reg_count=register_count)
-        self.decoder = CustomDeformableTransformerDecoder(hd, decoder_layer, ndl, eval_idx, register_count=register_count)
+        decoder_layer = CustomDeformableTransformerDecoderLayer(hd, nh, d_ffn, dropout, act, self.nl, ndp, reg_count=reg_count)
+        self.decoder = CustomDeformableTransformerDecoder(hd, decoder_layer, ndl, eval_idx, reg_count=reg_count)
 
         # Denoising part
         self.denoising_class_embed = nn.Embedding(nc, hd)
@@ -929,6 +929,10 @@ class CustomRTDETRDecoder(nn.Module):
         # Decoder head
         self.dec_score_head = nn.ModuleList([nn.Linear(hd, nc) for _ in range(ndl)])
         self.dec_bbox_head = nn.ModuleList([MLP(hd, hd, 4, num_layers=3) for _ in range(ndl)])
+
+        self.refer_bbox_registers = nn.Parameter(torch.zeros(1, reg_count, 4)) # to match self.enc_bbox_head output shape
+        nn.init.normal_(self.refer_bbox_registers, mean=0.0, std=0.1)
+
 
         self._reset_parameters()
 
@@ -1088,6 +1092,8 @@ class CustomRTDETRDecoder(nn.Module):
                 embeddings = embeddings.detach()
         if dn_embed is not None:
             embeddings = torch.cat([dn_embed, embeddings], 1)
+
+        refer_bbox = torch.concat([refer_bbox, self.refer_bbox_registers.expand(refer_bbox.shape[0], -1, -1)], dim = 1)
 
         return embeddings, refer_bbox, enc_bboxes, enc_scores
 
