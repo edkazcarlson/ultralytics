@@ -1,5 +1,7 @@
-EPOCHS = 1
-# EPOCHS = 30
+# EPOCHS = 1
+# EPOCHS = 35
+EPOCHS = 40 # 0.97593,0.95095 WITHOUT THE curve fitting transform
+# EPOCHS = 100 #                   all         37         81      0.996      0.951      0.992      0.977
 # EPOCHS = 10
 MOSAIC = 0.4
 OPTIMIZER = 'AdamW'
@@ -45,7 +47,8 @@ if __name__ == '__main__':
         lr0 = args.lr0, 
         lrf = args.lrf, 
         momentum=args.momentum,
-        batch=8
+        batch=8,
+        close_mosaic=EPOCHS //2
     )
 '''
 Mixup boost val pred but reduces test pred

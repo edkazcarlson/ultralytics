@@ -346,7 +346,6 @@ class LensFocusTransform:
         # Combine: keep original image inside boxes, blurred outside
         labels["img"] = np.where(outside_mask[..., None], np.array(img_blurred), img)
 
-
         return labels
 
 
@@ -1468,9 +1467,20 @@ class RandomHSV:
             >>> hsv_aug = RandomHSV(hgain=0.5, sgain=0.5, vgain=0.5)
             >>> hsv_aug(image)
         """
-        self.hgain = hgain
-        self.sgain = sgain
-        self.vgain = vgain
+
+        # DEFAULT
+        # epoch,time,train/box_loss,train/cls_loss,train/dfl_loss,metrics/precision(B),metrics/recall(B),metrics/mAP50(B),metrics/mAP50-95(B),
+        # 40,3614.78,0.19914,0.13085,0.76956,0.99695,0.92731,0.97593,0.95095
+
+        # DEFAULT
+        #                    all         37         81      0.963      0.963       0.99      0.973 
+        # /10 all
+        #                    all         37         81      0.961      0.963      0.984      0.972
+        # /10 hue only
+        #                    all         37         81      0.961      0.963      0.984      0.972
+        self.hgain = hgain /2 
+        self.sgain = sgain 
+        self.vgain = vgain 
 
     def __call__(self, labels):
         """
@@ -2512,6 +2522,22 @@ class RandomLoadText:
         return labels
 
 
+class CurveFix:
+    """
+    Try to fix the brightness by applying a sqrt, moving the distribution up without moving the ends much
+    """
+    def __init__(self, temp = 0.9):
+        self.temp = temp
+    
+    def __call__(self, labels):
+        img = labels["img"]
+        img = img.astype(np.float32) / 255.0
+        img = img ** self.temp
+        img = (img * 255).astype(np.uint8)
+        labels["img"] = img
+        return labels
+
+
 def v8_transforms(dataset, imgsz, hyp, stretch=False, training=True):
     """
     Applies a series of image transformations for training.
@@ -2536,6 +2562,8 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False, training=True):
         >>> transforms = v8_transforms(dataset, imgsz=640, hyp=hyp)
         >>> augmented_data = transforms(dataset[0])
     """
+
+    
     mosaic = Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic)
     affine = RandomPerspective(
         degrees=hyp.degrees,
@@ -2569,6 +2597,7 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False, training=True):
     if training:
         return Compose(
             [
+                CurveFix(),
                 pre_transform,
                 MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
                 CutMix(dataset, pre_transform=pre_transform, p=hyp.cutmix),
