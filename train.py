@@ -1,6 +1,20 @@
 # EPOCHS = 1
 # EPOCHS = 35
-EPOCHS = 40 # 0.97593,0.95095 WITHOUT THE curve fitting transform
+EPOCHS = 40 # 0.97593,0.95095 WITHOUT THE curve fitting transform 
+                # 0.9 temp on curve fitting:
+                #    all        208        454      0.984      0.939      0.978       0.95
+
+                # 0.75 temp
+                #    all        208        454      0.992      0.932       0.97      0.949
+
+
+        # img = self.brightenDarkness(img, 0.2, meanBlur=True)
+        # img = img ** (0.9 + (img *0.09))
+        # img = self.brightenDarkness(img, 0.15)
+        # img = img ** (0.9 + (img *0.09))
+
+                #    all        208        454      0.997      0.934      0.974      0.951
+
 # EPOCHS = 100 #                   all         37         81      0.996      0.951      0.992      0.977
 # EPOCHS = 10
 MOSAIC = 0.4

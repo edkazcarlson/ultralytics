@@ -322,6 +322,7 @@ class LensFocusTransform:
     
     def __call__(self, labels):
         instances = labels['instances']
+        origFormat = instances._bboxes.format
         instances._bboxes.convert('xyxy')
         bboxes = instances.bboxes
         img = labels["img"]
@@ -345,6 +346,8 @@ class LensFocusTransform:
         # Blur the original image (already done above as img_blurred)
         # Combine: keep original image inside boxes, blurred outside
         labels["img"] = np.where(outside_mask[..., None], np.array(img_blurred), img)
+        instances._bboxes.convert(origFormat)
+        labels['instances'] = instances
 
         return labels
 
@@ -2526,13 +2529,31 @@ class CurveFix:
     """
     Try to fix the brightness by applying a sqrt, moving the distribution up without moving the ends much
     """
-    def __init__(self, temp = 0.9):
-        self.temp = temp
-    
+    def __init__(self):
+        pass
+
+    def brightenDarkness(self, arr, threshold, k=7, meanBlur=False):
+        if meanBlur:
+            blurArr = cv2.blur(arr, (k, k))
+        else:
+            blurArr = cv2.GaussianBlur(arr, (k, k), 0)
+        blurArr = np.maximum(blurArr, arr)
+        slope = 1/threshold
+        mask = 1-((slope * arr) ** 2)
+        mask.clip(0, 1, out=mask)
+
+        return arr * (1 - mask) + blurArr * mask
+
     def __call__(self, labels):
         img = labels["img"]
         img = img.astype(np.float32) / 255.0
-        img = img ** self.temp
+
+        img = self.brightenDarkness(img, 0.2, meanBlur=True)
+        img = img ** (0.9 + (img *0.09))
+        img = self.brightenDarkness(img, 0.15)
+        img = img ** (0.9 + (img *0.09))
+
+
         img = (img * 255).astype(np.uint8)
         labels["img"] = img
         return labels
