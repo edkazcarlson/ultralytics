@@ -1,6 +1,6 @@
 # EPOCHS = 1
 # EPOCHS = 35
-EPOCHS = 40 # 0.97593,0.95095 WITHOUT THE curve fitting transform 
+# EPOCHS = 40 # 0.97593,0.95095 WITHOUT THE curve fitting transform 
                 # 0.9 temp on curve fitting:
                 #    all        208        454      0.984      0.939      0.978       0.95
 
@@ -13,7 +13,18 @@ EPOCHS = 40 # 0.97593,0.95095 WITHOUT THE curve fitting transform
         # img = self.brightenDarkness(img, 0.15)
         # img = img ** (0.9 + (img *0.09))
 
-                #    all        208        454      0.997      0.934      0.974      0.951
+                #    all        208        454      0.997      0.934      0.974      0.951  # TEST: 0.915
+
+
+#  EPOCHS = 10                   all        221        483      0.993      0.928      0.973      0.944 <--- updated dataset filtered on 90% > 10/255 TEST: 0.921
+# EPOCHS = 12
+EPOCHS = 10
+
+
+# EPOCHS = 6    #               all        208        454      0.978       0.93      0.969      0.933  # TEST: 0.926
+# EPOCHS = 10 #                    all        208        454      0.991      0.928       0.97      0.939 # Test: 0.94
+# EPOCHS = 20 #                      all        208        454      0.994      0.921      0.973      0.945  # TEST: 0.919
+# EPOCHS = 100 #                   all        208        454      0.997      0.932      0.981      0.956  # TEST: 0.898
 
 # EPOCHS = 100 #                   all         37         81      0.996      0.951      0.992      0.977
 # EPOCHS = 10
@@ -24,7 +35,7 @@ LR0 = 0.0001
 LRF = 0.0001
 SINGLE_CLS = True
 import argparse
-from ultralytics import YOLO
+from ultralytics import YOLO, RTDETR
 import os
 import sys
 
@@ -47,6 +58,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     this_dir = os.path.dirname(__file__)
     os.chdir(this_dir)
+
+    # model = RTDETR('rtdetr-l.pt')#                    all        208        454      0.974      0.943      0.958      0.904
+
     # model = YOLO("yolo11x.pt") # 0.987      0.962 training on val+train of my data  0.976      0.958 w/ my training on my train set , 0.985   0.961  w/o any of my data.    NO CHANGE BASELINE: 0.98 0.961
     model = YOLO("yolo12x.pt")  # train+val of my data + lens changes: 0.978      0.961   My data + lens changes: 0.99  0.973  No data change + lens chnage: 0.991      0.977     NO CHANGE BASELINE: 0.986, 0.966
     # model = YOLO(os.path.join(this_dir, "yolov10x.pt"))

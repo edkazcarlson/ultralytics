@@ -315,6 +315,109 @@ class Compose:
         """
         return f"{self.__class__.__name__}({', '.join([f'{t}' for t in self.transforms])})"
 
+
+class RandomOverlap:
+    def __init__(self):
+        pass
+    
+    def __call__(self, labels):
+        r = random.random()
+        if r < 0.05:
+            instances = labels['instances']
+            origFormat = instances._bboxes.format
+            instances._bboxes.convert('xyxy')
+            bboxes = instances.bboxes
+            img = labels["img"]
+
+            h, w = img.shape[:2]
+
+            if len(bboxes) == 0:
+                # No bounding boxes, return original labels
+                instances._bboxes.convert(origFormat)
+                labels['instances'] = instances
+                return labels
+
+            box = bboxes[0]  # Get the first bounding box
+            x1, y1, x2, y2 = map(int, box)
+
+            boxW = x2 - x1
+            boxH = y2 - y1
+            
+            # Get a random x pixel between x1 - w//2 and x1 (but not less than 0)
+            x1_new = random.randint(max(0, x1 - boxW // 2), x1 + boxW // 2)
+            y1_new = random.randint(max(0, y1 - boxH // 2), y1 + boxH // 2)
+            x2_new = min(x1_new + boxW, w)
+            y2_new = min(y1_new + boxH, h)
+
+            cropW = x2_new - x1_new
+            cropH = y2_new - y1_new
+
+            # Find a random region of size w*h that does not overlap with any existing bounding box
+            max_attempts = 50
+            attempt = 0
+            found = False
+            while attempt < max_attempts and not found:
+                rx1 = random.randint(0, img.shape[1] - cropW)
+                ry1 = random.randint(0, img.shape[0] - cropH)
+                rx2 = rx1 + cropW
+                ry2 = ry1 + cropH
+                # Check for overlap with all bounding boxes
+                overlaps = False
+                for bbox in bboxes:
+                    bx1, by1, bx2, by2 = map(int, bbox)
+                    # Compute intersection
+                    if ((rx1 > bx1 and rx1 < bx2) or (rx2 > bx1 and rx2 < bx2)) and ((ry1 > by1 and ry1 < by2) or (ry2 > by1 and ry2 < by2)):
+                        overlaps = True
+                        break
+                if not overlaps:
+                    found = True
+                attempt += 1
+
+            if found:
+                # Copy the random patch to the new bounding box location
+                # print(f"\n\nRandom patch found at ({rx1}, {rx2}, {ry1}, {ry2}), {rx2-rx1}*{ry2-ry1} Copying to ({x1_new}, {x2_new}, {y1_new}, {y2_new}) of size {x2_new-x1_new}*{y2_new-y1_new}\n\n")
+                patch = img[ry1:ry2, rx1:rx2].copy()
+                try:
+                    img[y1_new:y2_new, x1_new:x2_new] = patch
+                except :
+                    print(f"\n\nRandom patch found at ({rx1}, {rx2}, {ry1}, {ry2}), {rx2-rx1}*{ry2-ry1} Copying to ({x1_new}, {x2_new}, {y1_new}, {y2_new}) of size {x2_new-x1_new}*{y2_new-y1_new}\n\n")
+                    raise Exception(f"Random patch found at ({rx1}, {rx2}, {ry1}, {ry2}), {rx2-rx1}*{ry2-ry1} Copying to ({x1_new}, {x2_new}, {y1_new}, {y2_new}) of size {x2_new-x1_new}*{y2_new-y1_new}\n\n   Error copying patch to new bounding box location. Check the dimensions and ensure they match.")
+
+            else:
+                instances._bboxes.convert(origFormat)
+                labels['instances'] = instances
+                return labels
+
+            blurImg = cv2.GaussianBlur(img, (5, 5), 0)  # Apply Gaussian blur to the entire image
+            # Create a mask for the 10-pixel border around the new box location
+            mask = np.zeros(img.shape[:2], dtype=np.uint8)
+            cv2.rectangle(
+                mask,
+                (max(0, x1_new - 10), max(0, y1_new - 10)),
+                (min(img.shape[1] - 1, x2_new + 10), min(img.shape[0] - 1, y2_new + 10)),
+                color=1,
+                thickness=-1,
+            )
+            cv2.rectangle(
+                mask,
+                (x1_new, y1_new),
+                (x2_new, y2_new),
+                color=0,
+                thickness=-1,
+            )
+            # mask is 1 in the 10-pixel border around the new box, 0 elsewhere
+
+            # Combine the original image and the blurred image using the mask
+            img = np.where(mask[..., None] == 1, blurImg, img)
+
+            labels["img"] = img
+            instances._bboxes.convert(origFormat)
+            labels['instances'] = instances
+            cv2.imwrite("/tmp/random_overlap_debug.jpg", img)
+            exit()
+
+        return labels
+
 class LensFocusTransform:
     def __init__(self):
         # print('lens focus transform')
@@ -330,7 +433,7 @@ class LensFocusTransform:
         # # Convert numpy image to PIL Image
         img_pil = Image.fromarray(img)
         # Apply Gaussian blur using torchvision
-        gaussian_blur = T.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5)) #0.99  0.973  with k = 5, sig = 0.1, 0.5
+        gaussian_blur = T.GaussianBlur(kernel_size=7, sigma=(0.1, 0.5)) #0.99  0.973  with k = 5, sig = 0.1, 0.5
         img_blurred = gaussian_blur(img_pil)
         # Convert back to numpy array
         labels["img"] = np.array(img_blurred)
@@ -2530,6 +2633,7 @@ class CurveFix:
     Try to fix the brightness by applying a sqrt, moving the distribution up without moving the ends much
     """
     def __init__(self):
+        # exit()
         pass
 
     def brightenDarkness(self, arr, threshold, k=7, meanBlur=False):
@@ -2549,9 +2653,19 @@ class CurveFix:
         img = img.astype(np.float32) / 255.0
 
         img = self.brightenDarkness(img, 0.2, meanBlur=True)
-        img = img ** (0.9 + (img *0.09))
+
+        # r = random.uniform(0.85, .95)
+        # f2 = 0.99 - r
+
+        img = img ** (0.9 + (img *0.09)) # Test: 0.94
+        # img = img ** (r + (img *f2)) # Test: 0.94
         img = self.brightenDarkness(img, 0.15)
-        img = img ** (0.9 + (img *0.09))
+
+        # r = random.uniform(0.85, .95)
+        # f2 = 0.99 - r
+        # img = img ** (r + (img *f2)) 
+        img = img ** (0.85 + (img *0.14))
+        img = self.brightenDarkness(img, 0.10)
 
 
         img = (img * 255).astype(np.uint8)
@@ -2626,7 +2740,8 @@ def v8_transforms(dataset, imgsz, hyp, stretch=False, training=True):
                 RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
                 RandomFlip(direction="vertical", p=hyp.flipud),
                 RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
-                LensFocusTransform()
+                # LensFocusTransform(),
+                RandomOverlap()
             ]
         )  # transforms
     else:
