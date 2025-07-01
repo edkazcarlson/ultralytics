@@ -669,7 +669,9 @@ class Results(SimpleClass):
             return f"{', '.join(f'{self.names[j]} {probs.data[j]:.2f}' for j in probs.top5)}, "
         if boxes := self.boxes:
             counts = boxes.cls.int().bincount()
-            return "".join(f"{n} {self.names[i]}{'s' * (n > 1)}, " for i, n in enumerate(counts) if n > 0)
+            toReturn = "".join(f"{n} {self.names[i]}{'s' * (n > 1)}, " for i, n in enumerate(counts) if n > 0)
+            print(toReturn)
+            return toReturn
 
     def save_txt(self, txt_file, save_conf=False):
         """

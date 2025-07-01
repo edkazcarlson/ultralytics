@@ -17,8 +17,8 @@
 
 
 #  EPOCHS = 10                   all        221        483      0.993      0.928      0.973      0.944 <--- updated dataset filtered on 90% > 10/255 TEST: 0.921
-# EPOCHS = 12
-EPOCHS = 10
+EPOCHS = 50
+# EPOCHS = 10
 
 
 # EPOCHS = 6    #               all        208        454      0.978       0.93      0.969      0.933  # TEST: 0.926
@@ -59,10 +59,12 @@ if __name__ == '__main__':
     this_dir = os.path.dirname(__file__)
     os.chdir(this_dir)
 
-    # model = RTDETR('rtdetr-l.pt')#                    all        208        454      0.974      0.943      0.958      0.904
+    model = RTDETR('rtdetr-x.pt')#train16                   all        206        475      0.925       0.91       0.96      0.904   <- test = .902 epochs = 10
+                                #train18                   all        206        475      0.983      0.947      0.972      0.931    <- test = .946 epochs = 30
+                                #train20                    all        206        475      0.993      0.961      0.975      0.927   <- test = 0.937 epochs = 50
 
     # model = YOLO("yolo11x.pt") # 0.987      0.962 training on val+train of my data  0.976      0.958 w/ my training on my train set , 0.985   0.961  w/o any of my data.    NO CHANGE BASELINE: 0.98 0.961
-    model = YOLO("yolo12x.pt")  # train+val of my data + lens changes: 0.978      0.961   My data + lens changes: 0.99  0.973  No data change + lens chnage: 0.991      0.977     NO CHANGE BASELINE: 0.986, 0.966
+    # model = YOLO("yolo12x.pt")  # train+val of my data + lens changes: 0.978      0.961   My data + lens changes: 0.99  0.973  No data change + lens chnage: 0.991      0.977     NO CHANGE BASELINE: 0.986, 0.966
     # model = YOLO(os.path.join(this_dir, "yolov10x.pt"))
     # model = YOLO(os.path.join(this_dir, "yolov8s.pt"))
     results = model.train(
@@ -76,7 +78,7 @@ if __name__ == '__main__':
         lrf = args.lrf, 
         momentum=args.momentum,
         batch=8,
-        close_mosaic=EPOCHS //2
+        close_mosaic=EPOCHS //2,
     )
 '''
 Mixup boost val pred but reduces test pred

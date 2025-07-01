@@ -322,7 +322,7 @@ class RandomOverlap:
     
     def __call__(self, labels):
         r = random.random()
-        if r < 0.05:
+        if r < 0.15:
             instances = labels['instances']
             origFormat = instances._bboxes.format
             instances._bboxes.convert('xyxy')
@@ -413,8 +413,6 @@ class RandomOverlap:
             labels["img"] = img
             instances._bboxes.convert(origFormat)
             labels['instances'] = instances
-            cv2.imwrite("/tmp/random_overlap_debug.jpg", img)
-            exit()
 
         return labels
 

@@ -1,4 +1,4 @@
-from ultralytics import YOLO
+from ultralytics import YOLO, RTDETR
 from pathlib import Path
 import cv2
 import os
@@ -74,7 +74,8 @@ if __name__ == '__main__':
         idx = choice
 
     model_path = detect_path / train_folders[idx] / "weights" / "best.pt"
-    model = YOLO(model_path)
+    # model = YOLO(model_path)
+    model = RTDETR(model_path)
 
     # Directory with images
     output_dir = this_dir / "predictions" # Replace with the directory where you want to save predictions
